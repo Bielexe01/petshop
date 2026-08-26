@@ -1,0 +1,39 @@
+{
+  "name": "cassia-vet-clinica",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch-path=server server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "preview": "node server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "seed": "node server/seed.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "express": "^5.2.1",
+    "gsap": "^3.15.0",
+    "lenis": "^1.3.26",
+    "lucide-react": "^1.34.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2",
+    "tailwindcss": "^4.3.3",
+    "three": "^0.185.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "zod": "^4.4.3"
+  }
+}
