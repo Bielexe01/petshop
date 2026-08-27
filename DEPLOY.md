@@ -60,10 +60,11 @@ uma instância única. O mesmo código roda em `localhost` (dev) e como
    - `NODE_ENV=production` (garante o cookie de sessão `Secure`)
 3. **Deploy**. O `vercel.json`:
    - compila o frontend (`npm run build`) e publica `dist/`;
-   - mapeia `/api/*` e as rotas do SPA para `server/index.ts` (o Express
-     inteiro como Vercel Function);
+   - o entry da Vercel Function é `api/index.ts` (reexporta o `app` do
+     Express de `server/index.ts`);
+   - roteia `/api/*` → `/api` (a Function) e as rotas do SPA → `/index.html`;
    - assets estáticos (`/assets/*`, `/photos/*`) são servidos nativamente
-     pela Vercel.
+     pela Vercel (têm precedência sobre as rewrites).
 
 ## Notas importantes
 

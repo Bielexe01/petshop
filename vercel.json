@@ -1,18 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "server/index.ts": {
+    "api/index.ts": {
       "maxDuration": 10
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/server/index.ts"
+      "destination": "/api"
     },
     {
-      "source": "/((?!api/|_next/|assets/|photos/).*)",
-      "destination": "/server/index.ts"
+      "source": "/((?!api/|assets/|photos/|favicon.svg|robots.txt).*)",
+      "destination": "/index.html"
     }
-  ]
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": null
 }

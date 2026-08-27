@@ -1,5 +1,5 @@
-import { createServer as createViteServer } from 'vite'
 import express, { type Request, type Response, type NextFunction } from 'express'
+import type { ViteDevServer } from 'vite'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,8 +16,9 @@ const PHOTOS_DIR = join(__dirname, '..', 'public', 'photos')
    Servidor Express único.
    - Dev: monta o middleware do Vite (HMR + transform).
    - Prod: serve o build estático de dist/.
-   - Vercel: o `app` é exportado como Vercel Function (`vercel.json` mapeia
-     `/api/*` → este handler). O banco/storage ficam no Supabase.
+   - Vercel: o `app` é exportado como Vercel Function (entry em `api/index.ts`;
+     o `vercel.json` roteia `/api/*` e as rotas do SPA para lá). O
+     banco/storage ficam no Supabase.
    ──────────────────────────────────────────────────────────────────────── */
 
 const ROOT = join(__dirname, '..')
@@ -27,6 +28,9 @@ const IS_VERCEL = Boolean(process.env.VERCEL)
 
 export const app = express()
 app.disable('x-powered-by')
+// Atrás do proxy da Vercel, confiar em X-Forwarded-For para que o rate
+// limiter de login veja o IP real do cliente (e não o do proxy).
+app.set('trust proxy', true)
 
 app.use(express.json({ limit: '12mb' }))
 
@@ -98,7 +102,19 @@ app.use('/photos', express.static(PHOTOS_DIR, { maxAge: '7d' }))
 
 /* ── Frontend ─────────────────────────────────────────────────────────── */
 
-let vite: Awaited<ReturnType<typeof createViteServer>> | null = null
+let vite: ViteDevServer | null = null
+
+/** Inicializa o Vite só em dev (fora da Vercel). Import dinâmico para o Vite
+ *  nunca entrar no bundle da Vercel Function — mantém o deploy leve. */
+async function initVite() {
+  const { createServer: createViteServer } = await import('vite')
+  const server = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
+  })
+  vite = server
+  app.use(server.middlewares)
+}
 
 if (IS_PROD) {
   const dist = join(ROOT, 'dist')
@@ -116,11 +132,7 @@ if (IS_PROD) {
     }
   })
 } else if (!IS_VERCEL) {
-  vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  })
-  app.use(vite.middlewares)
+  void initVite()
 }
 
 /* ── Erro final ───────────────────────────────────────────────────────── */
