@@ -15,11 +15,14 @@ let pool: pg.Pool | null = null
 export function getDb(): pg.Pool {
   if (pool) return pool
 
-  const connectionString =
-    process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.SUPABASE_URL
+  // IMPORTANTE: SUPABASE_URL NÃO é uma connection string Postgres — é a URL
+  // REST do projeto (https://<ref>.supabase.co) e NÃO pode ser usada como
+  // fallback aqui (o pg tentaria conectar num host inválido → 500). Apenas
+  // DATABASE_URL / SUPABASE_DB_URL são connection strings válidas.
+  const connectionString = process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL
   if (!connectionString) {
     throw new Error(
-      'Faltando DATABASE_URL (ou SUPABASE_DB_URL/SUPABASE_URL). Configure no .env e nas env vars do Vercel.',
+      'Faltando DATABASE_URL (connection string do Postgres/Supabase). Configure no .env e nas env vars do Vercel. (SUPABASE_URL não é uma connection string.)',
     )
   }
 
@@ -27,13 +30,22 @@ export function getDb(): pg.Pool {
   // Postgres (500 em login/register/photos). rejectUnauthorized:false
   // porque o Supabase usa um certificado válido, mas o envio via
   // connection string não carrega a CA — aceitamos o cert verificado.
+  //
+  // family: 4 força IPv4. O endpoint legado db.<ref>.supabase.co resolve
+  // apenas IPv6 e a Vercel (IPv4) não conecta (getaddrinfo ENOTFOUND → 500).
+  // Use o pooler do Supabase (aws-0-<region>.pooler.supabase.com), que
+  // resolve IPv4. Se alguém configurar um host IPv6-only de novo, o erro
+  // aparece aqui em vez de virar 500 silencioso em todas as rotas.
   pool = new Pool({
     connectionString,
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
+    // `family` não está no tipo PoolConfig do @types/pg, mas o pg aceita no
+    // runtime (força IPv4). Cast via `as` para o tipo não reclamar.
+    family: 4,
     ssl: { rejectUnauthorized: false },
-  })
+  } as pg.PoolConfig & { family?: number })
 
   // `pg` converte timestamptz em Date por padrão. O frontend (e o gerador
   // de PDF) esperam strings no formato SQLite `YYYY-MM-DD HH:MM:SS`.
