@@ -124,7 +124,15 @@ export async function downloadStorageObject(relPath: string): Promise<Buffer | n
   const path = rest.join('/')
   if (!bucket || !path) return null
   const { data, error } = await storage().storage.from(bucket).download(path)
-  if (error || !data) return null
+  if (error) {
+    // Diagnóstico: mostra no log da Vercel QUAL projeto o storage está usando,
+    // para detectar SUPABASE_URL/KEY apontando para o projeto errado.
+    console.error(
+      `[storage] download falhou bucket=${bucket} path=${path} err=${error.message} url=${process.env.SUPABASE_URL}`,
+    )
+    return null
+  }
+  if (!data) return null
   return Buffer.from(await data.arrayBuffer())
 }
 
