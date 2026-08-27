@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "node --watch-path=server server/index.ts",
     "build": "tsc --noEmit && vite build",
-    "preview": "node server/index.ts",
     "typecheck": "tsc --noEmit",
     "seed": "node server/seed.ts"
   },
