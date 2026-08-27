@@ -60,9 +60,46 @@ const WIDTHS: Record<FontKey, number> = {
 
 const LINE_H = 1.3
 
-/** Escapa texto para dentro de stream de conteúdo PDF (strings). */
+/* ── Codificação de texto ──────────────────────────────────────────────
+   As fontes Helvetica (base-14) usam WinAnsiEncoding (subset do Latin-1 /
+   Windows-1252). Caracteres fora desse conjunto (—, aspas tipográficas,
+   “smart quotes”, U+FFFD…) precisam ser traduzidos antes de escrever o
+   PDF — senão o byte truncado vira lixo no documento. */
+
+const WIN_ANSI_REPLACE: Record<string, string> = {
+  '—': '-', // — travessão/em dash
+  '–': '-', // – en dash
+  '‘': "'", // ‘
+  '’': "'", // ’
+  '“': '"', // “
+  '”': '"', // ”
+  '„': '"', // „
+  '…': '...', // …
+  ' ': ' ', // espaço sem quebra
+  '�': '?', // caractere de substituição (corrompido)
+}
+
+/** Garante que o texto caiba em WinAnsi; chars fora viram ASCII/'?'. */
+function toWinAnsi(value: string): string {
+  let out = ''
+  for (const ch of value) {
+    const cp = ch.codePointAt(0)!
+    if (cp >= 0x20 && cp <= 0xff) {
+      out += ch
+      continue
+    }
+    if (ch === '\n') {
+      out += ch // quebra de linha tratada pelo splitLines
+      continue
+    }
+    out += WIN_ANSI_REPLACE[ch] ?? '?'
+  }
+  return out
+}
+
+/** Escapa/sanitiza texto para dentro de stream de conteúdo PDF (strings). */
 export function esc(value: string): string {
-  return value
+  return toWinAnsi(value)
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
@@ -137,6 +174,9 @@ function splitLines(value: string, size: number, maxWidth: number): Token[][] {
 
   const tokens = parseRich(value)
   for (const tok of tokens) {
+    // Sanitiza antes de medir/quebrar: o que for medido é o que será
+    // renderizado (esc() aplica a mesma transformação).
+    tok.value = toWinAnsi(tok.value)
     const parts = tok.value.split('\n')
     for (let p = 0; p < parts.length; p++) {
       const part = parts[p]
@@ -221,11 +261,11 @@ function buildStream(blocks: PdfBlock[], header: { title: string; subtitle?: str
 
   // Título da seção (direita)
   cmds.push('/F2 13 Tf')
-  const titleWidth = textWidth(header.title, 'F2', 13)
+  const titleWidth = textWidth(toWinAnsi(header.title), 'F2', 13)
   cmds.push(`BT ${A4_W - MARGIN - titleWidth} ${A4_H - 58} Td (${esc(header.title)}) Tj ET`)
   if (header.subtitle) {
     cmds.push('/F1 9 Tf')
-    const subWidth = textWidth(header.subtitle, 'F1', 9)
+    const subWidth = textWidth(toWinAnsi(header.subtitle), 'F1', 9)
     cmds.push(`BT ${A4_W - MARGIN - subWidth} ${A4_H - 72} Td (${esc(header.subtitle)}) Tj ET`)
   }
 
@@ -268,7 +308,11 @@ function buildStream(blocks: PdfBlock[], header: { title: string; subtitle?: str
       cmds.push('BT')
       for (const tok of line) {
         cmds.push(`/${tok.key} ${size} Tf`)
-        cmds.push(`${x} ${y} Td (${esc(tok.value)}) Tj`)
+        // Tm define a posição em coordenadas absolutas da página (origem no
+        // canto inferior-esquerdo). Diferente de Td, que é relativo ao ponto
+        // de texto atual — com Td os offsets de cada token se acumulavam,
+        // empilhando/sobrepondo o texto e quebrando a leitura no viewer.
+        cmds.push(`${1} 0 0 ${1} ${x} ${y} Tm (${esc(tok.value)}) Tj`)
         x += textWidth(tok.value, tok.key, size)
       }
       cmds.push('ET')
@@ -302,10 +346,12 @@ export function renderPdf(blocks: PdfBlock[], options: PdfOptions): Buffer {
       `/Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R /F4 7 0 R >> >> ` +
       `/Contents 8 0 R >>`,
   ) // 3
-  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`) // 4 (F1)
-  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>`) // 5 (F2)
-  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>`) // 6 (F3)
-  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique >>`) // 7 (F4)
+  // WinAnsiEncoding → acentos pt-BR (á, ã, ç, ª…) renderizam corretamente
+  // nas fontes base-14 Helvetica.
+  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>`) // 4 (F1)
+  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>`) // 5 (F2)
+  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>`) // 6 (F3)
+  w.addDict(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique /Encoding /WinAnsiEncoding >>`) // 7 (F4)
   w.addDict(`<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream`) // 8
 
   return w.build()

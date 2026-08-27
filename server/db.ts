@@ -1,148 +1,103 @@
-import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync, readFileSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import pg from 'pg'
+import { existsSync as fsExistsSync } from 'node:fs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = join(__dirname, '..')
-const DATA_DIR = join(ROOT, 'data')
+const { Pool } = pg
 
-export function dbPath(): string {
-  return process.env.DB_PATH ?? join(DATA_DIR, 'clinica.db')
-}
+/* ────────────────────────────────────────────────────────────────────────
+   Camada de dados — PostgreSQL via Supabase.
+   Mantém a MESMA API do SQLite (getOne/getAll/run), agora assíncrona,
+   para que as rotas só precisem adicionar `await`. Todas as consultas usam
+   prepared statements (anti SQL injection).
+   ──────────────────────────────────────────────────────────────────────── */
 
-let db: DatabaseSync | null = null
+let pool: pg.Pool | null = null
 
-/**
- * Abre (e inicializa) o banco SQLite. Chamado sob demanda e cacheado.
- * Todas as consultas usam prepared statements (anti SQL injection).
- */
-export function getDb(): DatabaseSync {
-  if (db) return db
+export function getDb(): pg.Pool {
+  if (pool) return pool
 
-  mkdirSync(dirname(dbPath()), { recursive: true })
-  const instance = new DatabaseSync(dbPath())
-  instance.exec('PRAGMA journal_mode = WAL;')
-  instance.exec('PRAGMA foreign_keys = ON;')
-
-  // Migrations simples por versão de schema
-  migrate(instance)
-
-  db = instance
-  return db
-}
-
-const MIGRATIONS: Array<{ version: number; name: string; run: (db: DatabaseSync) => void }> = [
-  {
-    version: 1,
-    name: 'schema-inicial',
-    run: (d) => {
-      d.exec(readFileSync(join(__dirname, 'schema.sql'), 'utf8'))
-    },
-  },
-  {
-    version: 2,
-    name: 'colunas-updated_at',
-    // Adiciona updated_at às tabelas que passaram a usar o campo no código,
-    // mantendo bancos existentes alinhados com o schema.sql atual.
-    run: (d) => {
-      const target = ['prescriptions', 'exams', 'vaccinations', 'documents']
-      for (const table of target) {
-        const has = d
-          .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = 'updated_at'`)
-          .all(table)
-        if (has.length === 0) {
-          // SQLite exige default CONSTANTE no ADD COLUMN; usamos '' e
-          // corrigimos as linhas existentes com datetime('now').
-          d.exec(`ALTER TABLE ${table} ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
-          d.exec(`UPDATE ${table} SET updated_at = datetime('now') WHERE updated_at = ''`)
-        }
-      }
-    },
-  },
-  {
-    version: 3,
-    name: 'fotos-administráveis',
-    // Permite que o admin troque as fotos do site via upload (armazenadas
-    // como base64 em site_settings — texto pequeno, ~150–400 KB por foto).
-    run: (d) => {
-      d.exec(`
-        CREATE TABLE IF NOT EXISTS site_settings (
-          key        TEXT PRIMARY KEY,
-          value      TEXT,
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-      `)
-    },
-  },
-]
-
-function migrate(instance: DatabaseSync) {
-  instance.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `)
-
-  const applied = new Set(
-    (instance.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: number }>).map(
-      (r) => r.version,
-    ),
-  )
-
-  for (const m of MIGRATIONS) {
-    if (applied.has(m.version)) continue
-    const tx = instance.prepare('BEGIN')
-    const commit = instance.prepare('COMMIT')
-    tx.run()
-    try {
-      m.run(instance)
-      instance.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)').run(m.version, m.name)
-      commit.run()
-    } catch (err) {
-      instance.prepare('ROLLBACK').run()
-      throw err
-    }
+  const connectionString =
+    process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.SUPABASE_URL
+  if (!connectionString) {
+    throw new Error(
+      'Faltando DATABASE_URL (ou SUPABASE_DB_URL/SUPABASE_URL). Configure no .env e nas env vars do Vercel.',
+    )
   }
+
+  pool = new Pool({
+    connectionString,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  })
+
+  // `pg` converte timestamptz em Date por padrão. O frontend (e o gerador
+  // de PDF) esperam strings no formato SQLite `YYYY-MM-DD HH:MM:SS`.
+  // Registrar um parser próprio para timestamptz normaliza o texto do
+  // Postgres para esse formato (corta fração de segundo e fuso).
+  //   ex.: "2026-08-26 14:30:00.123+00" → "2026-08-26 14:30:00"
+  pg.types.setTypeParser(1184, (v) => v.replace('T', ' ').replace(/\.\d+(Z|[+-]\d+(:\d+)?)?$/, ''))
+
+  return pool
 }
 
-/** Fecha o banco (usado em testes/restart). */
-export function closeDb() {
-  db?.close()
-  db = null
+/** Fecha o pool (usado em testes/restart). */
+export async function closeDb() {
+  await pool?.end()
+  pool = null
 }
 
 export interface Row {
   [key: string]: unknown
 }
 
-type SqlValue = string | number | bigint | null | Uint8Array
-
-/** Busca a primeira linha ou null. */
-export function getOne<T = Row>(sql: string, params: Array<string | number | bigint | null | Uint8Array> = []): T | null {
-  const stmt = getDb().prepare(sql)
-  return (stmt.get(...(params as SqlValue[])) as T | undefined) ?? null
+/** Caminho é mantido apenas por compatibilidade (era usado para SQLite local). */
+export function dbPath(): string {
+  return process.env.DB_PATH ?? ''
 }
 
-/** Busca todas as linhas. */
-export function getAll<T = Row>(sql: string, params: Array<string | number | bigint | null | Uint8Array> = []): T[] {
-  const stmt = getDb().prepare(sql)
-  return stmt.all(...(params as SqlValue[])) as T[]
+/** Retorna `true` se existe um arquivo no caminho (helper de compatibilidade). */
+export function existsSync(path: string): boolean {
+  return fsExistsSync(path)
 }
 
-/** Executa insert/update/delete e retorna o lastInsertRowid. */
-export function run(sql: string, params: Array<string | number | bigint | null | Uint8Array> = []): { lastInsertRowid: number; changes: number } {
-  const stmt = getDb().prepare(sql)
-  const result = stmt.run(...(params as SqlValue[]))
-  return { lastInsertRowid: Number(result.lastInsertRowid), changes: Number(result.changes) }
-}
-
-/** Serializa uma data ISO para formato SQLite datetime. */
+/**
+ * Serializa uma data para o formato armazenado no banco (string ISO).
+ * O Postgres aceita ISO; o parser de timestamptz normaliza para
+ * `YYYY-MM-DD HH:MM:SS` na leitura.
+ */
 export function toDbIso(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
   return d.toISOString().slice(0, 19).replace('T', ' ')
 }
 
-export { existsSync }
+type SqlValue = string | number | boolean | null
+
+/** Busca a primeira linha ou null. */
+export async function getOne<T = Row>(sql: string, params: SqlValue[] = []): Promise<T | null> {
+  const result = await getDb().query(sql, params)
+  return (result.rows[0] as T | undefined) ?? null
+}
+
+/** Busca todas as linhas. */
+export async function getAll<T = Row>(sql: string, params: SqlValue[] = []): Promise<T[]> {
+  const result = await getDb().query(sql, params)
+  return result.rows as T[]
+}
+
+/**
+ * Executa insert/update/delete.
+ * No Postgres não existe `lastInsertRowid` — inserts devem terminar com
+ * `RETURNING id` para expor o id criado (que chega em `rows[0].id`).
+ */
+export async function run(
+  sql: string,
+  params: SqlValue[] = [],
+): Promise<{ lastInsertRowid: number; changes: number }> {
+  const result = await getDb().query(sql, params)
+  const rowCount = result.rowCount ?? 0
+  const id = result.rows?.[0]?.id
+  return {
+    lastInsertRowid: id != null ? Number(id) : 0,
+    changes: rowCount,
+  }
+}

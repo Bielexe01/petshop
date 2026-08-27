@@ -3,7 +3,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getDb, closeDb } from './db.ts'
+import { closeDb } from './db.ts'
 import { attachSessionUser, clearSessionCookie, destroySession, parseCookies, requireAuth } from './auth.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -13,17 +13,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const PHOTOS_DIR = join(__dirname, '..', 'public', 'photos')
 
 /* ────────────────────────────────────────────────────────────────────────
-   Servidor único (porta 5173).
+   Servidor Express único.
    - Dev: monta o middleware do Vite (HMR + transform).
    - Prod: serve o build estático de dist/.
-   - API em /api/*, com validação zod, sessões httpOnly e prepared statements.
+   - Vercel: o `app` é exportado como Vercel Function (`vercel.json` mapeia
+     `/api/*` → este handler). O banco/storage ficam no Supabase.
    ──────────────────────────────────────────────────────────────────────── */
 
 const ROOT = join(__dirname, '..')
 const PORT = Number(process.env.PORT ?? 5173)
 const IS_PROD = process.env.NODE_ENV === 'production'
+const IS_VERCEL = Boolean(process.env.VERCEL)
 
-const app = express()
+export const app = express()
 app.disable('x-powered-by')
 
 app.use(express.json({ limit: '12mb' }))
@@ -113,7 +115,7 @@ if (IS_PROD) {
       res.status(404).send('Build não encontrado. Rode `npm run build`.')
     }
   })
-} else {
+} else if (!IS_VERCEL) {
   vite = await createViteServer({
     server: { middlewareMode: true },
     appType: 'spa',
@@ -128,17 +130,22 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ message: 'Erro interno do servidor.' })
 })
 
-const server = app.listen(PORT, () => {
-  console.log(`\n  🐾 Clínica Veterinária Dr.ª Cássia Carvalho`)
-  console.log(`  ➜  http://localhost:${PORT}`)
-  if (!IS_PROD) console.log(`  ➜  API em /api · sessão httpOnly · SQLite ${getDb() ? 'ok' : 'erro'}`)
-})
+/* ── Listen (só fora da Vercel) ───────────────────────────────────────── */
+if (!IS_VERCEL) {
+  const server = app.listen(PORT, () => {
+    console.log(`\n  🐾 Clínica Veterinária Dr.ª Cássia Carvalho`)
+    console.log(`  ➜  http://localhost:${PORT}`)
+    console.log(`  ➜  API em /api · sessão httpOnly · Postgres (Supabase)`)
+  })
 
-async function shutdown() {
-  try { await vite?.close() } catch { /* ignore */ }
-  server.close()
-  closeDb()
-  process.exit(0)
+  async function shutdown() {
+    try { await vite?.close() } catch { /* ignore */ }
+    server.close()
+    await closeDb()
+    process.exit(0)
+  }
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
 }
-process.on('SIGINT', shutdown)
-process.on('SIGTERM', shutdown)
+
+export default app

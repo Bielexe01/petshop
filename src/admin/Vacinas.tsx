@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/clinic'
-import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState, DemoHint } from '@/admin/ui'
+import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState, DemoHint, FormField, EditableModal, Toast } from '@/admin/ui'
 import { useSearchFilter } from '@/lib/useSearchFilter'
 
 interface Vaccination {
   id: number
+  pet_id: number
   pet_name: string
   client_name: string | null
   name: string
@@ -14,6 +15,16 @@ interface Vaccination {
   lot: string | null
   clinic_name: string | null
   vet_name: string | null
+}
+
+interface EditForm {
+  petId: string
+  name: string
+  appliedAt: string
+  nextDoseAt: string
+  lot: string
+  clinicName: string
+  vetName: string
 }
 
 interface PetOption {
@@ -41,6 +52,9 @@ export default function Vacinas() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<EditForm>({ petId: '', name: '', appliedAt: '', nextDoseAt: '', lot: '', clinicName: '', vetName: '' })
+  const [toastMsg, setToastMsg] = useState('')
   const { query, setQuery, filtered: filteredVaccinations } = useSearchFilter(vaccinations, (v) => [v.name, v.pet_name, v.client_name ?? '', v.vet_name ?? '', v.lot ?? '', v.clinic_name ?? '', doseStatus(v.next_dose_at).label])
 
   const load = () => {
@@ -87,6 +101,67 @@ export default function Vacinas() {
     await api.del(`/api/vaccinations/${v.id}`).catch(() => {})
     load()
   }
+
+  const openEdit = (v: Vaccination) => {
+    setEditForm({
+      petId: String(v.pet_id ?? ''),
+      name: v.name,
+      appliedAt: v.applied_at ?? '',
+      nextDoseAt: v.next_dose_at ?? '',
+      lot: v.lot ?? '',
+      clinicName: v.clinic_name ?? '',
+      vetName: v.vet_name ?? '',
+    })
+    setEditingId(v.id)
+  }
+
+  const setEdit = (k: keyof EditForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const saveEdit = async () => {
+    if (editingId == null) return
+    await api.put(`/api/vaccinations/${editingId}`, {
+      petId: Number(editForm.petId),
+      name: editForm.name,
+      appliedAt: editForm.appliedAt || null,
+      nextDoseAt: editForm.nextDoseAt || null,
+      lot: editForm.lot || null,
+      clinicName: editForm.clinicName || null,
+      vetName: editForm.vetName || null,
+    })
+    setVaccinations((list) =>
+      list.map((v) =>
+        v.id === editingId
+          ? {
+              ...v,
+              pet_id: Number(editForm.petId),
+              pet_name: pets.find((p) => p.id === Number(editForm.petId))?.name ?? v.pet_name,
+              name: editForm.name,
+              applied_at: editForm.appliedAt || null,
+              next_dose_at: editForm.nextDoseAt || null,
+              lot: editForm.lot || null,
+              clinic_name: editForm.clinicName || null,
+              vet_name: editForm.vetName || null,
+            }
+          : v,
+      ),
+    )
+    setToastMsg('Vacina atualizada.')
+  }
+
+  const removeEdit = async () => {
+    if (editingId == null) return
+    await api.del(`/api/vaccinations/${editingId}`)
+    setVaccinations((list) => list.filter((v) => v.id !== editingId))
+    setToastMsg('Vacina removida.')
+  }
+
+  const editing = editingId == null ? null : vaccinations.find((v) => v.id === editingId)
+
+  useEffect(() => {
+    if (!toastMsg) return
+    const t = setTimeout(() => setToastMsg(''), 2500)
+    return () => clearTimeout(t)
+  }, [toastMsg])
 
   return (
     <div>
@@ -172,7 +247,10 @@ export default function Vacinas() {
                       <Td>{v.next_dose_at ? formatDate(v.next_dose_at) : '—'}</Td>
                       <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
                       <Td className="text-right">
-                        <RowAction tone="ghost" onClick={() => void remove(v)}>Remover</RowAction>
+                        <div className="inline-flex gap-1.5">
+                          <RowAction tone="ghost" onClick={() => openEdit(v)}>Ver</RowAction>
+                          <RowAction tone="ghost" onClick={() => void remove(v)}>Remover</RowAction>
+                        </div>
                       </Td>
                     </tr>
                   )
@@ -185,6 +263,43 @@ export default function Vacinas() {
           </div>
         </div>
       )}
+
+      {editing && (
+        <EditableModal
+          open
+          onClose={() => setEditingId(null)}
+          onSave={saveEdit}
+          onSaved={() => setEditingId(null)}
+          onRemove={removeEdit}
+          label={`Editar vacina ${editing.name}`}
+          avatar={
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-magenta font-display text-lg font-black text-white shadow-glow">
+              {(editing.name.trim().charAt(0) || 'V').toUpperCase()}
+            </span>
+          }
+          title={editing.name}
+          subtitle={`${editing.pet_name} · Lote ${editing.lot ?? '—'}`}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              label="Pet *"
+              name="editPet"
+              value={editForm.petId}
+              onChange={setEdit('petId')}
+              options={[['', 'Selecione um pet…'], ...pets.map((p): [string, string] => [String(p.id), p.owner_name ? `${p.name} · ${p.owner_name}` : p.name])]}
+              hint="Pet ao qual a vacina pertence."
+            />
+            <FormField label="Vacina *" name="editName" value={editForm.name} onChange={setEdit('name')} placeholder="Ex.: V10" />
+            <FormField label="Aplicada em" type="date" name="editApplied" value={editForm.appliedAt} onChange={setEdit('appliedAt')} hint="Data em que a dose foi aplicada." />
+            <FormField label="Próxima dose" type="date" name="editNext" value={editForm.nextDoseAt} onChange={setEdit('nextDoseAt')} hint="Data prevista para a próxima dose." />
+            <FormField label="Lote" name="editLot" value={editForm.lot} onChange={setEdit('lot')} placeholder="Ex.: B12345" />
+            <FormField label="Clínica" name="editClinic" value={editForm.clinicName} onChange={setEdit('clinicName')} />
+            <FormField label="Médica responsável" name="editVet" value={editForm.vetName} onChange={setEdit('vetName')} placeholder="Dr.ª Cássia Carvalho" className="sm:col-span-2" />
+          </div>
+        </EditableModal>
+      )}
+
+      {toastMsg && <Toast kind="success" message={toastMsg} />}
     </div>
   )
 }

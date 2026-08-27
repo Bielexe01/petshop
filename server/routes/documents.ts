@@ -1,64 +1,69 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
 import { requireClient, requireAdmin, audit } from '../auth.ts'
-import { saveUploadedFile, resolveStoragePath } from '../lib/upload.ts'
-import { readFileSync } from 'node:fs'
+import { saveUploadedFile, downloadStorageObject, removeStorageObject } from '../lib/upload.ts'
 
 export const documentsRouter = Router()
 
 /* ── Cliente: meus documentos (somente os disponibilizados) ───────────── */
 
-documentsRouter.get('/mine', requireClient, (req, res) => {
+documentsRouter.get('/mine', requireClient, async (req, res) => {
   const clientId = req.sessionUser!.id
-  const documents = getAll(
+  const documents = await getAll(
     `SELECT d.*, pet.name AS pet_name
      FROM documents d
      LEFT JOIN pets pet ON pet.id = d.pet_id
-     WHERE (d.client_id = ? OR d.pet_id IN (SELECT id FROM pets WHERE owner_id = ?))
-       AND d.is_available = 1
+     WHERE (d.client_id = $1 OR d.pet_id IN (SELECT id FROM pets WHERE owner_id = $1))
+       AND d.is_available = true
      ORDER BY d.created_at DESC LIMIT 100`,
-    [clientId, clientId],
+    [clientId],
   )
   res.json({ documents })
 })
 
 /* ── Cliente: download/visualização — sempre verificado server-side ───── */
 
-documentsRouter.get('/mine/:id/file', requireClient, (req, res) => {
+documentsRouter.get('/mine/:id/file', requireClient, async (req, res) => {
   const id = Number(req.params.id)
-  const doc = getOne<Record<string, unknown>>(
+  const doc = await getOne<Record<string, unknown>>(
     `SELECT d.* FROM documents d
-     WHERE d.id = ?
-       AND d.is_available = 1
-       AND (d.client_id = ? OR d.pet_id IN (SELECT id FROM pets WHERE owner_id = ?))`,
-    [id, req.sessionUser!.id, req.sessionUser!.id],
+     WHERE d.id = $1
+       AND d.is_available = true
+       AND (d.client_id = $2 OR d.pet_id IN (SELECT id FROM pets WHERE owner_id = $2))`,
+    [id, req.sessionUser!.id],
   )
   if (!doc) {
     res.status(404).json({ message: 'Documento não encontrado.' })
     return
   }
-  const abs = resolveStoragePath(String(doc.file_path))
-  const buffer = readFileSync(abs)
+  const buffer = await downloadStorageObject(String(doc.file_path))
+  if (!buffer) {
+    res.status(404).json({ message: 'Arquivo não encontrado.' })
+    return
+  }
   res.setHeader('Content-Type', String(doc.mime || 'application/pdf'))
   res.setHeader('Content-Disposition', `inline; filename="${String(doc.file_name).replace(/"/g, '')}"`)
   res.send(buffer)
 })
 
-documentsRouter.get('/mine/:id/download', requireClient, (req, res) => {
+documentsRouter.get('/mine/:id/download', requireClient, async (req, res) => {
   const id = Number(req.params.id)
-  const doc = getOne<Record<string, unknown>>(
+  const doc = await getOne<Record<string, unknown>>(
     `SELECT d.* FROM documents d
-     WHERE d.id = ?
-       AND d.is_available = 1
-       AND (d.client_id = ? OR d.pet_id IN (SELECT id FROM pets WHERE owner_id = ?))`,
-    [id, req.sessionUser!.id, req.sessionUser!.id],
+     WHERE d.id = $1
+       AND d.is_available = true
+       AND (d.client_id = $2 OR d.pet_id IN (SELECT id FROM pets WHERE owner_id = $2))`,
+    [id, req.sessionUser!.id],
   )
   if (!doc) {
     res.status(404).json({ message: 'Documento não encontrado.' })
     return
   }
-  const abs = resolveStoragePath(String(doc.file_path))
-  const buffer = readFileSync(abs)
+  const buffer = await downloadStorageObject(String(doc.file_path))
+  if (!buffer) {
+    res.status(404).json({ message: 'Arquivo não encontrado.' })
+    return
+  }
   res.setHeader('Content-Type', String(doc.mime || 'application/pdf'))
   res.setHeader('Content-Disposition', `attachment; filename="${String(doc.file_name).replace(/"/g, '')}"`)
   res.send(buffer)
@@ -66,8 +71,8 @@ documentsRouter.get('/mine/:id/download', requireClient, (req, res) => {
 
 /* ── Admin: CRUD ──────────────────────────────────────────────────────── */
 
-documentsRouter.get('/', requireAdmin, (_req, res) => {
-  const documents = getAll(
+documentsRouter.get('/', requireAdmin, async (_req, res) => {
+  const documents = await getAll(
     `SELECT d.*, pet.name AS pet_name, pr.full_name AS client_name
      FROM documents d
      LEFT JOIN pets pet ON pet.id = d.pet_id
@@ -77,12 +82,12 @@ documentsRouter.get('/', requireAdmin, (_req, res) => {
   res.json({ documents })
 })
 
-documentsRouter.get('/:id', requireAdmin, (req, res) => {
+documentsRouter.get('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id)
-  const doc = getOne<Record<string, unknown>>(
+  const doc = await getOne<Record<string, unknown>>(
     `SELECT d.*, pet.name AS pet_name
      FROM documents d LEFT JOIN pets pet ON pet.id = d.pet_id
-     WHERE d.id = ?`,
+     WHERE d.id = $1`,
     [id],
   )
   if (!doc) {
@@ -93,7 +98,7 @@ documentsRouter.get('/:id', requireAdmin, (req, res) => {
 })
 
 /* Upload: base64 + título + vínculo + disponibilidade */
-documentsRouter.post('/', requireAdmin, (req, res) => {
+documentsRouter.post('/', requireAdmin, async (req, res) => {
   const title = String(req.body.title ?? '').trim().slice(0, 200)
   const type = String(req.body.type ?? 'veterinario').slice(0, 30)
   const clientId = req.body.clientId ? Number(req.body.clientId) : null
@@ -115,83 +120,80 @@ documentsRouter.post('/', requireAdmin, (req, res) => {
 
   let filePath: string
   try {
-    filePath = saveUploadedFile(data, fileName, mime)
+    filePath = await saveUploadedFile(data, fileName, mime)
   } catch (err) {
     res.status(400).json({ message: err instanceof Error ? err.message : 'Arquivo inválido.' })
     return
   }
 
-  const { lastInsertRowid } = run(
+  const { lastInsertRowid } = await run(
     `INSERT INTO documents (client_id, pet_id, appointment_id, title, type, file_name, file_path, mime, is_available, uploaded_by_admin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-    [clientId, petId, appointmentId, title, type, fileName, filePath, mime, isAvailable ? 1 : 0],
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true) RETURNING id`,
+    [clientId, petId, appointmentId, title, type, fileName, filePath, mime, isAvailable],
   )
 
   if (clientId) {
-    run(
+    await run(
       `INSERT INTO notifications (user_id, title, body, type)
-       VALUES (?, 'Novo documento disponível', '${title.replace(/'/g, "''")} já está disponível na sua área do cliente.', 'documento')`,
-      [clientId],
+       VALUES ($1, 'Novo documento disponível', $2, 'documento')`,
+      [clientId, `${title} já está disponível na sua área do cliente.`],
     )
   }
 
-  audit(req.sessionUser!.id, 'criar_documento', 'document', Number(lastInsertRowid), title)
-  res.status(201).json({ document: { id: Number(lastInsertRowid) } })
+  await audit(req.sessionUser!.id, 'criar_documento', 'document', lastInsertRowid, title)
+  res.status(201).json({ document: { id: lastInsertRowid } })
 })
 
-documentsRouter.put('/:id', requireAdmin, (req, res) => {
+documentsRouter.put('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id)
   const title = String(req.body.title ?? '').trim().slice(0, 200)
   if (!title) {
     res.status(400).json({ message: 'Informe o título do documento.' })
     return
   }
-  run(
-    `UPDATE documents SET title = ?, type = ?, client_id = ?, pet_id = ?, appointment_id = ?, is_available = ?, updated_at = datetime('now')
-     WHERE id = ?`,
+  await run(
+    `UPDATE documents SET title = $1, type = $2, client_id = $3, pet_id = $4, appointment_id = $5, is_available = $6, updated_at = now()
+     WHERE id = $7`,
     [
       title,
       String(req.body.type ?? 'veterinario').slice(0, 30),
       req.body.clientId ? Number(req.body.clientId) : null,
       req.body.petId ? Number(req.body.petId) : null,
       req.body.appointmentId ? Number(req.body.appointmentId) : null,
-      req.body.isAvailable !== false ? 1 : 0,
+      req.body.isAvailable !== false,
       id,
     ],
   )
-  audit(req.sessionUser!.id, 'editar_documento', 'document', id, title)
+  await audit(req.sessionUser!.id, 'editar_documento', 'document', id, title)
   res.json({ ok: true })
 })
 
-documentsRouter.delete('/:id', requireAdmin, (req, res) => {
+documentsRouter.delete('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id)
-  const doc = getOne<{ title: string; file_path: string }>('SELECT title, file_path FROM documents WHERE id = ?', [id])
+  const doc = await getOne<{ title: string; file_path: string }>('SELECT title, file_path FROM documents WHERE id = $1', [id])
   if (doc) {
-    try {
-      const abs = resolveStoragePath(doc.file_path)
-      // remove arquivo (soft-delete: não quebrar se o arquivo já não existe)
-      const { rmSync } = require('node:fs') as typeof import('node:fs')
-      rmSync(abs, { force: true })
-    } catch {
-      /* arquivo pode já ter sido removido */
-    }
+    // remove arquivo (soft-delete: não quebrar se o arquivo já não existe)
+    await removeStorageObject(doc.file_path)
   }
-  run('DELETE FROM documents WHERE id = ?', [id])
-  audit(req.sessionUser!.id, 'remover_documento', 'document', id, doc?.title)
+  await run('DELETE FROM documents WHERE id = $1', [id])
+  await audit(req.sessionUser!.id, 'remover_documento', 'document', id, doc?.title ?? undefined)
   res.json({ ok: true })
 })
 
 /* Usado pelo admin para abrir qualquer documento (auditado) */
-documentsRouter.get('/admin/:id/file', requireAdmin, (req, res) => {
+documentsRouter.get('/admin/:id/file', requireAdmin, async (req, res) => {
   const id = Number(req.params.id)
-  const doc = getOne<Record<string, unknown>>('SELECT * FROM documents WHERE id = ?', [id])
+  const doc = await getOne<Record<string, unknown>>('SELECT * FROM documents WHERE id = $1', [id])
   if (!doc) {
     res.status(404).json({ message: 'Documento não encontrado.' })
     return
   }
-  audit(req.sessionUser!.id, 'visualizar_documento', 'document', id, String(doc.title))
-  const abs = resolveStoragePath(String(doc.file_path))
-  const buffer = readFileSync(abs)
+  await audit(req.sessionUser!.id, 'visualizar_documento', 'document', id, String(doc.title))
+  const buffer = await downloadStorageObject(String(doc.file_path))
+  if (!buffer) {
+    res.status(404).json({ message: 'Arquivo não encontrado.' })
+    return
+  }
   res.setHeader('Content-Type', String(doc.mime || 'application/pdf'))
   res.setHeader('Content-Disposition', `inline; filename="${String(doc.file_name).replace(/"/g, '')}"`)
   res.send(buffer)

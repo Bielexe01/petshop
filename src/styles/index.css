@@ -165,6 +165,21 @@
   }
 }
 
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 0.22s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+
 @keyframes paw-walk {
   0% {
     opacity: 0;
@@ -200,5 +215,87 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Tabela admin responsiva ────────────────────────────────────────
+   No mobile cada linha vira um card empilhado; no desktop volta a ser
+   uma tabela comum. O JS propaga o rótulo de cada <th> para as células
+   via `data-label`, consumido aqui no modo card. */
+@media (max-width: 1023px) {
+  .admin-table-scroll {
+    overflow-x: clip;
+  }
+
+  .admin-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .admin-table > thead {
+    display: none;
+  }
+  .admin-table > tbody {
+    display: block;
+    width: 100%;
+  }
+  .admin-table > tbody > tr {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgb(23 32 42 / 0.08);
+    border-radius: 1rem;
+    background: #fff;
+    overflow: hidden;
+    box-shadow: 0 8px 40px -12px rgb(23 32 42 / 0.1);
+  }
+  /* Cada célula vira uma linha rótulo: valor. */
+  .admin-table > tbody > tr > td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid rgb(23 32 42 / 0.06);
+    font-size: 0.8125rem;
+  }
+  .admin-table > tbody > tr > td:last-child {
+    border-bottom: 0;
+  }
+  .admin-table > tbody > tr > td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-family: var(--font-display);
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(23 32 42 / 0.42);
+    padding-top: 0.1rem;
+  }
+  /* A última célula (Ações) fica sem rótulo: os botões ocupam a largura. */
+  .admin-table > tbody > tr > td:last-child {
+    display: block;
+  }
+  .admin-table > tbody > tr > td:last-child::before {
+    content: none;
+  }
+  /* Coluna de ações: empilha os botões em largura total. */
+  .admin-table > tbody > tr > td:last-child > div {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .admin-table > tbody > tr > td:last-child > div > * {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-table {
+    min-width: 640px;
   }
 }

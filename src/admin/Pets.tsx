@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/clinic'
-import { PageHeader, Card, Table, Th, Td, RowAction, SearchInput, EmptyState } from '@/admin/ui'
+import { PageHeader, Card, Table, Th, Td, RowAction, SearchInput, EmptyState, FormField, EditableModal, Toast } from '@/admin/ui'
 
 interface Pet {
   id: number
@@ -11,6 +11,8 @@ interface Pet {
   sex: string
   birth_date: string | null
   weight_kg: number | null
+  microchip: string | null
+  notes: string | null
   owner_name: string | null
   owner_email: string | null
   owner_id: number
@@ -22,7 +24,26 @@ interface ClientOption {
   email: string
 }
 
-const EMPTY_FORM = { ownerId: '', name: '', species: 'cachorro', breed: '', sex: 'nao-informado', birthDate: '', weightKg: '', microchip: '', notes: '' }
+interface PetForm {
+  ownerId: string
+  name: string
+  species: string
+  breed: string
+  sex: string
+  birthDate: string
+  weightKg: string
+  microchip: string
+  notes: string
+}
+
+const EMPTY_FORM: PetForm = { ownerId: '', name: '', species: 'cachorro', breed: '', sex: 'nao-informado', birthDate: '', weightKg: '', microchip: '', notes: '' }
+
+const SPECIES_OPTIONS: Array<[string, string]> = [['cachorro', 'Cachorro'], ['gato', 'Gato'], ['outros', 'Outro']]
+const SEX_OPTIONS: Array<[string, string]> = [['macho', 'Macho'], ['femea', 'Fêmea'], ['nao-informado', 'Não informado']]
+
+function speciesLabel(s: string): string {
+  return s === 'cachorro' ? 'Cachorro' : s === 'gato' ? 'Gato' : 'Outro'
+}
 
 export default function Pets() {
   const [pets, setPets] = useState<Pet[]>([])
@@ -30,9 +51,13 @@ export default function Pets() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState<PetForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [editForm, setEditForm] = useState<PetForm>(EMPTY_FORM)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [toastMsg, setToastMsg] = useState('')
+  const toastTimer = useRef<number | null>(null)
 
   const load = (q?: string) => {
     const query = q === undefined ? search : q
@@ -49,7 +74,11 @@ export default function Pets() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current)
+  }, [])
+
+  const set = (k: keyof PetForm) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -80,6 +109,79 @@ export default function Pets() {
       setSaving(false)
     }
   }
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    if (toastTimer.current) window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMsg(''), 2500)
+  }
+
+  const openEdit = (p: Pet) => {
+    setEditForm({
+      ownerId: String(p.owner_id),
+      name: p.name,
+      species: p.species,
+      breed: p.breed ?? '',
+      sex: p.sex,
+      birthDate: p.birth_date ? p.birth_date.slice(0, 10) : '',
+      weightKg: p.weight_kg != null ? String(p.weight_kg) : '',
+      microchip: p.microchip ?? '',
+      notes: p.notes ?? '',
+    })
+    setEditingId(p.id)
+  }
+
+  const closeEdit = () => setEditingId(null)
+
+  const setEdit = (k: keyof PetForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const saveEdit = async () => {
+    if (editingId == null) return
+    if (!editForm.ownerId) throw new Error('Selecione o cliente dono do pet.')
+    await api.put(`/api/pets/admin/${editingId}`, {
+      ownerId: Number(editForm.ownerId),
+      name: editForm.name,
+      species: editForm.species,
+      breed: editForm.breed || null,
+      sex: editForm.sex,
+      birthDate: editForm.birthDate || null,
+      weightKg: editForm.weightKg ? Number(editForm.weightKg) : null,
+      microchip: editForm.microchip || null,
+      notes: editForm.notes || null,
+    })
+  }
+
+  const handleSaved = () => {
+    if (editingId == null) return
+    setPets((prev) =>
+      prev.map((p) =>
+        p.id === editingId
+          ? {
+              ...p,
+              owner_id: Number(editForm.ownerId),
+              name: editForm.name,
+              species: editForm.species,
+              breed: editForm.breed || null,
+              sex: editForm.sex,
+              birth_date: editForm.birthDate || null,
+              weight_kg: editForm.weightKg ? Number(editForm.weightKg) : null,
+              microchip: editForm.microchip || null,
+              notes: editForm.notes || null,
+            }
+          : p,
+      ),
+    )
+    showToast('Pet atualizado com sucesso.')
+  }
+
+  const removeEdit = async () => {
+    if (editingId == null) return
+    await api.del(`/api/pets/${editingId}`)
+    setPets((prev) => prev.filter((p) => p.id !== editingId))
+    showToast('Pet removido.')
+  }
+
+  const editingPet = pets.find((p) => p.id === editingId) ?? null
 
   const remove = async (p: Pet) => {
     if (!window.confirm(`Remover o pet ${p.name}?`)) return
@@ -116,9 +218,9 @@ export default function Pets() {
               </select>
             </div>
             <FormInput label="Nome do pet" required value={form.name} onChange={set('name')} placeholder="Ex.: Thor" />
-            <Select label="Espécie" value={form.species} onChange={set('species')} options={[['cachorro', 'Cachorro'], ['gato', 'Gato'], ['outros', 'Outro']]} />
+            <Select label="Espécie" value={form.species} onChange={set('species')} options={SPECIES_OPTIONS} />
             <FormInput label="Raça" value={form.breed} onChange={set('breed')} placeholder="Ex.: Golden" />
-            <Select label="Sexo" value={form.sex} onChange={set('sex')} options={[['macho', 'Macho'], ['femea', 'Fêmea'], ['nao-informado', 'Não informado']]} />
+            <Select label="Sexo" value={form.sex} onChange={set('sex')} options={SEX_OPTIONS} />
             <FormInput label="Nascimento" type="date" value={form.birthDate} onChange={set('birthDate')} />
             <FormInput label="Peso (kg)" type="number" step="0.1" min="0" value={form.weightKg} onChange={set('weightKg')} />
             <FormInput label="Microchip" value={form.microchip} onChange={set('microchip')} placeholder="Opcional" className="sm:col-span-2" />
@@ -170,7 +272,10 @@ export default function Pets() {
                   <Td className="capitalize">{p.species}{p.breed ? ` · ${p.breed}` : ''}</Td>
                   <Td>{p.birth_date ? formatDate(p.birth_date) : '—'}</Td>
                   <Td className="text-right">
-                    <RowAction tone="ghost" onClick={() => void remove(p)}>Remover</RowAction>
+                    <div className="inline-flex gap-1.5">
+                      <RowAction tone="ghost" onClick={() => void openEdit(p)}>Ver</RowAction>
+                      <RowAction tone="ghost" onClick={() => void remove(p)}>Remover</RowAction>
+                    </div>
                   </Td>
                 </tr>
               ))}
@@ -178,6 +283,49 @@ export default function Pets() {
           </Table>
         </Card>
       )}
+
+      <EditableModal
+        open={editingId !== null}
+        onClose={closeEdit}
+        onSave={saveEdit}
+        onSaved={handleSaved}
+        onRemove={removeEdit}
+        label="Editar pet"
+        title={editForm.name.trim() || 'Pet'}
+        subtitle={
+          editingPet?.owner_name
+            ? `${speciesLabel(editForm.species)} · ${editingPet.owner_name}`
+            : speciesLabel(editForm.species)
+        }
+        avatar={
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-magenta font-display text-lg font-black text-white">
+            {(editForm.name.trim().charAt(0) || '?').toUpperCase()}
+          </div>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            label="Cliente dono"
+            name="owner"
+            required
+            value={editForm.ownerId}
+            onChange={setEdit('ownerId')}
+            options={clients.map((c): [string, string] => [String(c.id), `${c.full_name ?? 'Sem nome'} · ${c.email}`])}
+            hint="Dono responsável pelo pet"
+            className="sm:col-span-2"
+          />
+          <FormField label="Nome do pet" name="name" required value={editForm.name} onChange={setEdit('name')} placeholder="Ex.: Thor" />
+          <FormField label="Espécie" name="species" value={editForm.species} onChange={setEdit('species')} options={SPECIES_OPTIONS} />
+          <FormField label="Raça" name="breed" value={editForm.breed} onChange={setEdit('breed')} placeholder="Ex.: Golden" />
+          <FormField label="Sexo" name="sex" value={editForm.sex} onChange={setEdit('sex')} options={SEX_OPTIONS} />
+          <FormField label="Nascimento" name="birthDate" type="date" value={editForm.birthDate} onChange={setEdit('birthDate')} hint="Data de nascimento do pet" />
+          <FormField label="Peso (kg)" name="weightKg" type="number" step="0.1" min="0" value={editForm.weightKg} onChange={setEdit('weightKg')} hint="Peso aproximado em kg" />
+          <FormField label="Microchip" name="microchip" value={editForm.microchip} onChange={setEdit('microchip')} placeholder="Opcional" className="sm:col-span-2" hint="Número do microchip de identificação" />
+          <FormField label="Observações" name="notes" textarea value={editForm.notes} onChange={setEdit('notes')} placeholder="Alergias, temperamento…" className="sm:col-span-2" />
+        </div>
+      </EditableModal>
+
+      {toastMsg && <Toast kind="success" message={toastMsg} />}
     </div>
   )
 }

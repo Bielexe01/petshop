@@ -1,19 +1,27 @@
-import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { api, openFile } from '@/lib/api'
 import { formatDate } from '@/lib/clinic'
-import { PageHeader, Card, Table, Th, Td, SearchInput, EmptyState } from '@/admin/ui'
+import { PageHeader, Card, Table, Th, Td, RowAction, SearchInput, EmptyState, FormField, EditableModal, Toast } from '@/admin/ui'
 import { useSearchFilter } from '@/lib/useSearchFilter'
 import { DownloadIcon, FileIcon, PlusIcon, TrashIcon } from '@/portal/icons'
 
 interface Prescription {
   id: number
+  pet_id: number
   pet_name: string
   client_name: string | null
   vet_name: string | null
   issued_at: string | null
   valid_until: string | null
   instructions: string | null
-  item_count?: number
+}
+
+interface PrescriptionItem {
+  medication_name: string
+  dosage: string | null
+  frequency: string | null
+  duration: string | null
+  notes: string | null
 }
 
 interface PetOption {
@@ -42,6 +50,11 @@ export default function Receitas() {
   const [items, setItems] = useState<ItemForm[]>([{ ...EMPTY_ITEM }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState(EMPTY_FORM)
+  const [editItems, setEditItems] = useState<ItemForm[]>([{ ...EMPTY_ITEM }])
+  const [toastMsg, setToastMsg] = useState('')
+  const toastTimer = useRef<number | undefined>(undefined)
   const { query, setQuery, filtered: filteredPrescriptions } = useSearchFilter(prescriptions, (r) => [r.pet_name, r.client_name ?? '', r.vet_name ?? ''])
 
   const load = () => {
@@ -111,6 +124,97 @@ export default function Receitas() {
   }
 
   const viewPdf = (id: number) => void openFile(`/api/prescriptions/${id}/pdf`).catch(() => alert('Não foi possível abrir o PDF.'))
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMsg(''), 2500)
+  }
+
+  const setEdit = (k: keyof typeof editForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const setEditItem = (i: number) => (k: keyof ItemForm) => (e: { target: { value: string } }) =>
+    setEditItems((list) => list.map((it, idx) => (idx === i ? { ...it, [k]: e.target.value } : it)))
+
+  const addEditItem = () => setEditItems((l) => [...l, { ...EMPTY_ITEM }])
+  const removeEditItem = (i: number) => setEditItems((l) => l.filter((_, idx) => idx !== i))
+
+  const openEdit = async (r: Prescription) => {
+    try {
+      const data = await api.get<{ prescription: Prescription; items: PrescriptionItem[] }>(`/api/prescriptions/${r.id}`)
+      const p = data.prescription
+      setEditForm({
+        petId: String(p.pet_id),
+        vetName: p.vet_name ?? '',
+        issuedAt: p.issued_at ? p.issued_at.slice(0, 10) : '',
+        validUntil: p.valid_until ? p.valid_until.slice(0, 10) : '',
+        instructions: p.instructions ?? '',
+      })
+      setEditItems(
+        data.items.length
+          ? data.items.map((it) => ({
+              medicationName: it.medication_name,
+              dosage: it.dosage ?? '',
+              frequency: it.frequency ?? '',
+              duration: it.duration ?? '',
+              notes: it.notes ?? '',
+            }))
+          : [{ ...EMPTY_ITEM }],
+      )
+      setEditingId(r.id)
+    } catch {
+      setEditingId(null)
+    }
+  }
+
+  const onSave = async () => {
+    if (editingId === null) return
+    if (!editForm.petId) throw new Error('Selecione o pet.')
+    const validItems = editItems.filter((it) => it.medicationName.trim())
+    if (validItems.length === 0) throw new Error('Adicione ao menos um medicamento.')
+    await api.put(`/api/prescriptions/${editingId}`, {
+      petId: Number(editForm.petId),
+      vetName: editForm.vetName || null,
+      issuedAt: editForm.issuedAt || null,
+      validUntil: editForm.validUntil || null,
+      instructions: editForm.instructions || null,
+      items: validItems.map((it) => ({
+        medicationName: it.medicationName.trim(),
+        dosage: it.dosage || null,
+        frequency: it.frequency || null,
+        duration: it.duration || null,
+        notes: it.notes || null,
+      })),
+    })
+  }
+
+  const onSaved = () => {
+    if (editingId === null) return
+    const pet = pets.find((p) => p.id === Number(editForm.petId))
+    const edited: Prescription = {
+      id: editingId,
+      pet_id: pet?.id ?? 0,
+      pet_name: pet?.name ?? '',
+      client_name: pet?.owner_name ?? null,
+      vet_name: editForm.vetName || null,
+      issued_at: editForm.issuedAt || null,
+      valid_until: editForm.validUntil || null,
+      instructions: editForm.instructions || null,
+    }
+    setPrescriptions((prev) => prev.map((r) => (r.id === edited.id ? edited : r)))
+    showToast('Receita atualizada.')
+  }
+
+  const onRemove = async () => {
+    if (editingId === null) return
+    await api.del(`/api/prescriptions/${editingId}`)
+    setPrescriptions((prev) => prev.filter((r) => r.id !== editingId))
+    showToast('Receita removida.')
+  }
+
+  const editPet = pets.find((p) => p.id === Number(editForm.petId))
+  const editTitle = editPet?.name || 'Receita'
+  const editSubtitle = [editPet?.owner_name ?? '', editForm.vetName].filter(Boolean).join(' · ')
 
   return (
     <div>
@@ -260,6 +364,7 @@ export default function Receitas() {
                   <Td>{r.vet_name ?? '—'}</Td>
                   <Td className="text-right">
                     <div className="inline-flex gap-1.5">
+                      <RowAction tone="ghost" onClick={() => void openEdit(r)}>Ver</RowAction>
                       <button
                         type="button"
                         onClick={() => viewPdf(r.id)}
@@ -282,6 +387,89 @@ export default function Receitas() {
           </Table>
         </Card>
       )}
+
+      <EditableModal
+        open={editingId !== null}
+        onClose={() => setEditingId(null)}
+        onSave={onSave}
+        onSaved={onSaved}
+        onRemove={onRemove}
+        label="Editar receita"
+        title={editTitle}
+        subtitle={editSubtitle || undefined}
+        avatar={
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-turquesa/12 text-base font-black text-turquesa">
+            {editTitle.charAt(0).toUpperCase()}
+          </span>
+        }
+        saveLabel="Salvar alterações"
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            label="Pet *"
+            name="petId"
+            value={editForm.petId}
+            onChange={setEdit('petId')}
+            options={[['', 'Selecione um pet…'], ...pets.map((p): [string, string] => [String(p.id), p.owner_name ? `${p.name} · ${p.owner_name}` : p.name])]}
+            className="sm:col-span-2"
+            hint="Pet a quem a receita pertence."
+          />
+          <FormField label="Médica responsável" name="vetName" value={editForm.vetName} onChange={setEdit('vetName')} placeholder="Dr.ª Cássia Carvalho" hint="Nome do profissional responsável." />
+          <FormField label="Emitida em" name="issuedAt" type="date" value={editForm.issuedAt} onChange={setEdit('issuedAt')} hint="Data de emissão da receita." />
+          <FormField label="Validade" name="validUntil" type="date" value={editForm.validUntil} onChange={setEdit('validUntil')} hint="Até quando a receita é válida." />
+          <FormField label="Instruções gerais" name="instructions" textarea value={editForm.instructions} onChange={setEdit('instructions')} className="sm:col-span-2" placeholder="Ex.: administrar após alimentação" />
+
+          <div className="flex items-center gap-3 sm:col-span-2">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-turquesa/10 text-turquesa">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                <path d="M10.5 20.5a4.5 4.5 0 0 1-6.36-6.36L13.5 4.79a4.5 4.5 0 0 1 6.36 6.36z" />
+                <path d="M7 17.5 17.5 7" />
+              </svg>
+            </span>
+            <span className="font-display text-[11px] font-black uppercase tracking-[0.18em] text-dark/60">Medicamentos</span>
+            <span className="h-px min-w-0 flex-1 bg-dark/8" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={addEditItem}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-turquesa/25 bg-turquesa/8 px-4 text-xs font-semibold text-turquesa transition-colors hover:bg-turquesa hover:text-white"
+            >
+              <PlusIcon className="h-4 w-4" /> Adicionar
+            </button>
+          </div>
+
+          <div className="min-w-0 space-y-3 sm:col-span-2">
+            {editItems.map((item, i) => (
+              <div key={i} className="rounded-xl border border-dark/10 bg-cream/60 p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-turquesa/10 font-display text-xs font-black text-turquesa">{i + 1}</span>
+                    <span className="truncate font-display text-sm font-bold text-dark">Medicamento {i + 1}</span>
+                  </div>
+                  {editItems.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEditItem(i)}
+                      aria-label={`Remover medicamento ${i + 1}`}
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-dark/10 text-dark/40 transition-colors hover:border-magenta/30 hover:bg-magenta/5 hover:text-magenta"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 sm:items-start">
+                  <FormField label="Medicamento *" name={`medicationName-${i}`} required value={item.medicationName} onChange={setEditItem(i)('medicationName')} placeholder="Ex.: Amoxicilina" />
+                  <FormField label="Dosagem" name={`dosage-${i}`} value={item.dosage} onChange={setEditItem(i)('dosage')} placeholder="Ex.: 50mg" />
+                  <FormField label="Frequência" name={`frequency-${i}`} value={item.frequency} onChange={setEditItem(i)('frequency')} placeholder="Ex.: 2x ao dia" />
+                  <FormField label="Duração" name={`duration-${i}`} value={item.duration} onChange={setEditItem(i)('duration')} placeholder="Ex.: 7 dias" />
+                  <FormField label="Observações" name={`notes-${i}`} textarea value={item.notes} onChange={setEditItem(i)('notes')} className="sm:col-span-2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </EditableModal>
+
+      {toastMsg && <Toast kind="success" message={toastMsg} />}
     </div>
   )
 }

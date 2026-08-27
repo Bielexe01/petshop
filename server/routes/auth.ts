@@ -29,19 +29,19 @@ authRouter.post('/register', async (req, res) => {
   }
   const d = parsed.data
 
-  const existing = getOne<{ id: number }>('SELECT id FROM users WHERE email = ?', [d.email])
+  const existing = await getOne<{ id: number }>('SELECT id FROM users WHERE email = $1', [d.email])
   if (existing) {
     res.status(409).json({ message: 'Este e-mail já está cadastrado.' })
     return
   }
 
   const passwordHash = hashPassword(d.password)
-  const { lastInsertRowid: userId } = run(
-    'INSERT INTO users (email, password_hash) VALUES (?, ?)',
+  const { lastInsertRowid: userId } = await run(
+    'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
     [d.email, passwordHash],
   )
-  run(
-    `INSERT INTO profiles (user_id, full_name, cpf, phone) VALUES (?, ?, ?, ?)`,
+  await run(
+    `INSERT INTO profiles (user_id, full_name, cpf, phone) VALUES ($1, $2, $3, $4)`,
     [userId, d.fullName, d.cpf ?? null, d.phone ?? null],
   )
 
@@ -62,14 +62,14 @@ authRouter.post('/login', async (req, res) => {
   const ip = req.ip ?? 'unknown'
   const key = rateLimitKey(email, ip)
 
-  if (isRateLimited(key)) {
+  if (await isRateLimited(key)) {
     res.status(429).json({ message: 'Muitas tentativas. Aguarde alguns segundos.' })
     return
   }
 
   // 1) Tenta admin
-  const admin = getOne<{ id: number; email: string; password_hash: string; name: string; role: string; is_active: number }>(
-    'SELECT * FROM admin_users WHERE email = ?',
+  const admin = await getOne<{ id: number; email: string; password_hash: string; name: string; role: string; is_active: boolean }>(
+    'SELECT * FROM admin_users WHERE email = $1',
     [email],
   )
   if (admin && verifyPassword(password, admin.password_hash)) {
@@ -77,7 +77,7 @@ authRouter.post('/login', async (req, res) => {
       res.status(403).json({ message: 'Conta administrativa desativada.' })
       return
     }
-    resetRateLimit(key)
+    await resetRateLimit(key)
     const session = await createSession(admin.id, 'admin', admin.name, admin.email)
     setSessionCookie(res, session.token)
     // session.user já carrega role normalizado ('admin'); o papel superadmin é
@@ -87,8 +87,8 @@ authRouter.post('/login', async (req, res) => {
   }
 
   // 2) Tenta cliente
-  const client = getOne<{ id: number; email: string; password_hash: string; is_active: number }>(
-    'SELECT * FROM users WHERE email = ?',
+  const client = await getOne<{ id: number; email: string; password_hash: string; is_active: boolean }>(
+    'SELECT * FROM users WHERE email = $1',
     [email],
   )
   if (client && verifyPassword(password, client.password_hash)) {
@@ -96,15 +96,15 @@ authRouter.post('/login', async (req, res) => {
       res.status(403).json({ message: 'Conta desativada. Fale com a clínica.' })
       return
     }
-    resetRateLimit(key)
-    const profile = getOne<{ full_name: string }>('SELECT full_name FROM profiles WHERE user_id = ?', [client.id])
+    await resetRateLimit(key)
+    const profile = await getOne<{ full_name: string }>('SELECT full_name FROM profiles WHERE user_id = $1', [client.id])
     const session = await createSession(client.id, 'client', profile?.full_name ?? 'Cliente', client.email)
     setSessionCookie(res, session.token)
     res.json({ user: session.user })
     return
   }
 
-  recordFailedLogin(key)
+  await recordFailedLogin(key)
   res.status(401).json({ message: 'E-mail ou senha incorretos.' })
 })
 
@@ -119,7 +119,7 @@ authRouter.post('/logout', async (req, res) => {
 
 /* ── Esqueci minha senha ──────────────────────────────────────────────── */
 
-authRouter.post('/forgot', (req, res) => {
+authRouter.post('/forgot', async (req, res) => {
   const parsed = forgotSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ message: 'Informe um e-mail válido.' })
@@ -128,14 +128,14 @@ authRouter.post('/forgot', (req, res) => {
   const { email } = parsed.data
 
   // Não revelar se o e-mail existe (prevenção de enumeração)
-  const user = getOne<{ id: number }>('SELECT id FROM users WHERE email = ?', [email])
-  const admin = getOne<{ id: number }>('SELECT id FROM admin_users WHERE email = ?', [email])
+  const user = await getOne<{ id: number }>('SELECT id FROM users WHERE email = $1', [email])
+  const admin = await getOne<{ id: number }>('SELECT id FROM admin_users WHERE email = $1', [email])
 
   if (user) {
-    const raw = createPasswordResetToken(user.id, email)
+    const raw = await createPasswordResetToken(user.id, email)
     console.log(`\n  🔑 [recuperação] ${email} — token: ${raw}\n`)
   } else if (admin) {
-    const raw = createPasswordResetToken(admin.id, email)
+    const raw = await createPasswordResetToken(admin.id, email)
     console.log(`\n  🔑 [recuperação admin] ${email} — token: ${raw}\n`)
   }
 
@@ -144,7 +144,7 @@ authRouter.post('/forgot', (req, res) => {
 
 /* ── Reset de senha ───────────────────────────────────────────────────── */
 
-authRouter.post('/reset', (req, res) => {
+authRouter.post('/reset', async (req, res) => {
   const parsed = resetSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ message: 'Dados inválidos.' })
@@ -152,20 +152,20 @@ authRouter.post('/reset', (req, res) => {
   }
   const { token, password } = parsed.data
 
-  const userId = consumePasswordResetToken(token)
+  const userId = await consumePasswordResetToken(token)
   if (!userId) {
     res.status(400).json({ message: 'Link inválido ou expirado.' })
     return
   }
 
   const passwordHash = hashPassword(password)
-  const client = getOne<{ id: number }>('SELECT id FROM users WHERE id = ?', [userId])
-  const admin = getOne<{ id: number }>('SELECT id FROM admin_users WHERE id = ?', [userId])
+  const client = await getOne<{ id: number }>('SELECT id FROM users WHERE id = $1', [userId])
+  const admin = await getOne<{ id: number }>('SELECT id FROM admin_users WHERE id = $1', [userId])
 
   if (client) {
-    run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId])
+    await run('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId])
   } else if (admin) {
-    run('UPDATE admin_users SET password_hash = ? WHERE id = ?', [passwordHash, userId])
+    await run('UPDATE admin_users SET password_hash = $1 WHERE id = $2', [passwordHash, userId])
   } else {
     res.status(400).json({ message: 'Conta não encontrada.' })
     return
@@ -176,8 +176,8 @@ authRouter.post('/reset', (req, res) => {
 
 /* ── Notificações do usuário (helpers compartilhados) ─────────────────── */
 
-export function createNotification(userId: number, title: string, body: string, type = 'info') {
-  run('INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)', [userId, title, body, type])
+export async function createNotification(userId: number, title: string, body: string, type = 'info') {
+  await run('INSERT INTO notifications (user_id, title, body, type) VALUES ($1, $2, $3, $4)', [userId, title, body, type])
 }
 
 export { getAll }

@@ -4,9 +4,9 @@ import { requireAdmin } from '../auth.ts'
 
 export const auditRouter = Router()
 
-auditRouter.get('/', requireAdmin, (req, res) => {
+auditRouter.get('/', requireAdmin, async (req, res) => {
   const { limit } = req.query
-  const rows = getAll<Record<string, unknown>>(
+  const rows = await getAll<Record<string, unknown>>(
     `SELECT a.*, ad.name AS admin_name
      FROM auth_logs a
      LEFT JOIN admin_users ad ON ad.id = a.admin_user_id

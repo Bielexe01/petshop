@@ -1,5 +1,33 @@
-import type { ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+
+/** Animações do toast (fade/slide-in) — reutilizadas via classe animate-toast-in. */
+export const TOAST_ANIMATION_CLASS = 'animate-toast-in'
+
+/** Ícone base SVG consistente (stroke, sem fill). */
+function IconBase({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      {children}
+    </svg>
+  )
+}
+
+export function CheckIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <IconBase className={className}>
+      <path d="M20 6 9 17l-5-5" />
+    </IconBase>
+  )
+}
+
+export function SpinnerIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <IconBase className={cn('animate-spin', className)}>
+      <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+    </IconBase>
+  )
+}
 
 /** Cabeçalho de página do admin. */
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
@@ -93,11 +121,41 @@ export function Badge({ tone, children }: { tone: AdminBadgeTone; children: Reac
   return <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold', tones[tone])}>{children}</span>
 }
 
-/** Tabela responsiva do admin. */
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * Tabela responsiva do admin.
+ *
+ * No desktop (≥ `lg`) renderiza a tabela clássica com rolagem horizontal
+ * quando necessário. Em telas estreitas, cada linha se transforma em um
+ * card empilhado: o cabeçalho some e cada célula vira uma linha "rótulo:
+ * valor" (o rótulo vem do `th` correspondente, propagado via `data-label`
+ * logo após a montagem). A semântica de tabela é preservada para leitores
+ * de tela.
+ */
+export function Table({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLTableElement>(null)
+
+  // Propaga o texto do <th> para cada célula da coluna como data-label.
+  // Roda uma vez na montagem (e depois que os dados carregam a lista é
+  // re-renderizada pela página; o useEffect abaixo cobre essa mudança).
+  useLayoutEffect(() => {
+    const table = ref.current
+    if (!table) return
+    const headCells = Array.from(table.querySelectorAll('thead th'))
+    const bodyRows = Array.from(table.querySelectorAll('tbody tr'))
+    for (const row of bodyRows) {
+      const cells = Array.from(row.children as HTMLCollectionOf<HTMLElement>)
+      cells.forEach((cell, i) => {
+        const label = headCells[i]?.textContent?.trim()
+        if (label) cell.setAttribute('data-label', label)
+      })
+    }
+  })
+
   return (
-    <div className={cn('max-w-full overflow-x-auto', className)}>
-      <table className="w-full min-w-[640px] border-collapse text-left">{children}</table>
+    <div className="admin-table-scroll max-w-full overflow-x-auto">
+      <table ref={ref} className="admin-table w-full border-collapse text-left">
+        {children}
+      </table>
     </div>
   )
 }
@@ -172,6 +230,221 @@ export function EmptyState({ title, description }: { title: string; description?
       <p className="font-display text-base font-bold text-dark">{title}</p>
       {description && <p className="max-w-sm text-sm text-dark/55">{description}</p>}
     </div>
+  )
+}
+
+/** Toast de feedback (sucesso/erro) fixo no canto superior direito. */
+export function Toast({ kind, message }: { kind: 'success' | 'error'; message: string }) {
+  const styles =
+    kind === 'success'
+      ? 'border-verde/30 bg-verde-claro text-verde'
+      : 'border-magenta/30 bg-rosa-claro text-magenta'
+  return (
+    <div className={cn('fixed right-4 top-4 z-[60] flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-soft animate-toast-in', styles)}>
+      {kind === 'success' ? (
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-verde text-white">
+          <CheckIcon className="h-3.5 w-3.5" />
+        </span>
+      ) : (
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-magenta text-white text-xs font-black">!</span>
+      )}
+      {message}
+    </div>
+  )
+}
+
+/** Campo de formulário reutilizável (input/select/textarea) para os modais de edição. */
+export function FormField({
+  label,
+  className,
+  textarea,
+  options,
+  hint,
+  ...props
+}: {
+  label: string
+  className?: string
+  textarea?: boolean
+  options?: Array<[string, string]>
+  hint?: string
+} & Omit<React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>, 'className'>) {
+  const id = props.id ?? props.name ?? label
+  const base =
+    'h-12 w-full rounded-xl border border-dark/15 bg-white px-4 text-[15px] text-dark outline-none placeholder:text-dark/30 focus:border-turquesa focus:ring-2 focus:ring-turquesa/15'
+  return (
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
+      <label htmlFor={id} className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-dark/60">
+        {label}
+      </label>
+      {textarea ? (
+        <textarea id={id} rows={2} className={cn(base, 'h-auto py-3 leading-relaxed')} {...(props as React.TextareaHTMLAttributes<HTMLTextAreaElement>)} />
+      ) : options ? (
+        <select id={id} className={base} {...(props as React.SelectHTMLAttributes<HTMLSelectElement>)}>
+          {options.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input id={id} className={base} {...(props as React.InputHTMLAttributes<HTMLInputElement>)} />
+      )}
+      {hint && <p className="text-[11px] text-dark/45">{hint}</p>}
+    </div>
+  )
+}
+
+/**
+ * Modal de detalhe + edição de um registro.
+ * - `title` / `subtitle` / `avatar`: cabeçalho.
+ * - `children`: campos de formulário (use `FormField`).
+ * - `onSave`: chamado com o form; mostra loading; em sucesso toca `onSaved`.
+ * - `onRemove`: opcional; mostra confirm antes.
+ */
+export function EditableModal({
+  open,
+  onClose,
+  onSave,
+  onSaved,
+  onRemove,
+  label,
+  title,
+  subtitle,
+  avatar,
+  children,
+  saveLabel = 'Salvar',
+}: {
+  open: boolean
+  onClose: () => void
+  onSave: () => Promise<void>
+  onSaved?: () => void
+  onRemove?: () => Promise<void>
+  label: string
+  title: ReactNode
+  subtitle?: ReactNode
+  avatar?: ReactNode
+  children: ReactNode
+  saveLabel?: string
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+  const [removing, setRemoving] = useState(false)
+
+  const save = async () => {
+    if (saving || done) return
+    setError('')
+    setSaving(true)
+    try {
+      await onSave()
+      setDone(true)
+      onSaved?.()
+      setTimeout(() => {
+        setDone(false)
+        onClose()
+      }, 900)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar.')
+      setSaving(false)
+    }
+  }
+
+  const remove = async () => {
+    if (removing || done) return
+    setError('')
+    if (!window.confirm('Excluir este registro? Essa ação não pode ser desfeita.')) return
+    setRemoving(true)
+    try {
+      await onRemove?.()
+      setDone(true)
+      setTimeout(() => {
+        setRemoving(false)
+        onClose()
+      }, 600)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível excluir.')
+      setRemoving(false)
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <Modal onClose={onClose} label={label} className="max-w-2xl">
+      {/* Cabeçalho */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {avatar}
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-xl font-black text-dark">{title}</h2>
+            {subtitle && <p className="mt-0.5 truncate text-sm text-dark/55">{subtitle}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Formulário */}
+      <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">{children}</div>
+
+      {/* Erro */}
+      {error && (
+        <p role="alert" className="mt-3 rounded-lg border border-magenta/25 bg-magenta/8 px-4 py-2.5 text-sm font-medium text-magenta">
+          {error}
+        </p>
+      )}
+
+      {/* Ações */}
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-dark/8 pt-4">
+        <div className="flex items-center gap-2">
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => void remove()}
+              disabled={removing || saving || done}
+              className="inline-flex h-11 items-center gap-1.5 rounded-full border border-magenta/25 px-4 font-display text-[11px] font-bold uppercase tracking-wider text-magenta transition-colors hover:bg-magenta/5 disabled:opacity-50"
+            >
+              {removing ? <SpinnerIcon className="h-4 w-4" /> : <TrashIcon className="h-4 w-4" />}
+              Remover
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving || done}
+            className="h-11 rounded-full border border-dark/15 px-5 font-display text-[11px] font-bold uppercase tracking-wider text-dark/70 transition-colors hover:border-dark/30 hover:text-dark disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || done}
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-turquesa px-6 font-display text-[11px] font-bold uppercase tracking-wider text-white shadow-soft transition-colors hover:bg-azul disabled:opacity-60"
+          >
+            {done ? (
+              <>
+                <CheckIcon className="h-4 w-4" /> Salvo
+              </>
+            ) : saving ? (
+              <>
+                <SpinnerIcon className="h-4 w-4" /> Salvando…
+              </>
+            ) : (
+              saveLabel
+            )}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <IconBase className={className}>
+      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6" />
+    </IconBase>
   )
 }
 

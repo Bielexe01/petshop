@@ -9,11 +9,11 @@ adminRouter.use(requireAdmin)
 
 /* ── Overview do dashboard ────────────────────────────────────────────── */
 
-adminRouter.get('/overview', (_req, res) => {
-  const clients = getOne<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n ?? 0
-  const pets = getOne<{ n: number }>('SELECT COUNT(*) AS n FROM pets')?.n ?? 0
-  const appointments = getOne<{ n: number }>('SELECT COUNT(*) AS n FROM appointments')?.n ?? 0
-  const upcoming = getAll<Record<string, unknown>>(
+adminRouter.get('/overview', async (_req, res) => {
+  const clients = (await getOne<{ n: number }>('SELECT COUNT(*) AS n FROM users'))?.n ?? 0
+  const pets = (await getOne<{ n: number }>('SELECT COUNT(*) AS n FROM pets'))?.n ?? 0
+  const appointments = (await getOne<{ n: number }>('SELECT COUNT(*) AS n FROM appointments'))?.n ?? 0
+  const upcoming = await getAll<Record<string, unknown>>(
     `SELECT a.*, p.name AS pet_name, pr.full_name AS client_name
      FROM appointments a
      JOIN pets p ON p.id = a.pet_id
@@ -21,13 +21,13 @@ adminRouter.get('/overview', (_req, res) => {
      WHERE a.status = 'agendada' AND a.scheduled_at IS NOT NULL
      ORDER BY a.scheduled_at ASC LIMIT 5`,
   )
-  const documents = getOne<{ n: number }>('SELECT COUNT(*) AS n FROM documents')?.n ?? 0
-  const recentClients = getAll<Record<string, unknown>>(
+  const documents = (await getOne<{ n: number }>('SELECT COUNT(*) AS n FROM documents'))?.n ?? 0
+  const recentClients = await getAll<Record<string, unknown>>(
     `SELECT u.id, u.email, u.created_at, p.full_name
      FROM users u LEFT JOIN profiles p ON p.user_id = u.id
      ORDER BY u.created_at DESC LIMIT 5`,
   )
-  const recentAudit = getAll<Record<string, unknown>>(
+  const recentAudit = await getAll<Record<string, unknown>>(
     `SELECT a.*, ad.name AS admin_name
      FROM auth_logs a LEFT JOIN admin_users ad ON ad.id = a.admin_user_id
      ORDER BY a.created_at DESC LIMIT 8`,
@@ -37,31 +37,31 @@ adminRouter.get('/overview', (_req, res) => {
 
 /* ── Usuários admin ───────────────────────────────────────────────────── */
 
-adminRouter.get('/users', (_req, res) => {
-  res.json({ users: getAll<Record<string, unknown>>('SELECT id, name, email, role, is_active, created_at FROM admin_users ORDER BY created_at') })
+adminRouter.get('/users', async (_req, res) => {
+  res.json({ users: await getAll<Record<string, unknown>>('SELECT id, name, email, role, is_active, created_at FROM admin_users ORDER BY created_at') })
 })
 
-adminRouter.post('/users', requireSuperAdmin, (req, res) => {
+adminRouter.post('/users', requireSuperAdmin, async (req, res) => {
   const parsed = adminCreateSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ message: 'Dados inválidos.', issues: parsed.error.flatten() })
     return
   }
   const d = parsed.data
-  const existing = getOne<{ id: number }>('SELECT id FROM admin_users WHERE email = ?', [d.email])
+  const existing = await getOne<{ id: number }>('SELECT id FROM admin_users WHERE email = $1', [d.email])
   if (existing) {
     res.status(409).json({ message: 'E-mail já cadastrado.' })
     return
   }
-  const { lastInsertRowid } = run(
-    'INSERT INTO admin_users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+  const { lastInsertRowid } = await run(
+    'INSERT INTO admin_users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
     [d.name, d.email, hashPassword(d.password), d.role],
   )
-  audit(req.sessionUser!.id, 'criar_admin', 'admin_user', Number(lastInsertRowid), d.name)
-  res.status(201).json({ user: { id: Number(lastInsertRowid) } })
+  await audit(req.sessionUser!.id, 'criar_admin', 'admin_user', lastInsertRowid, d.name)
+  res.status(201).json({ user: { id: lastInsertRowid } })
 })
 
-adminRouter.put('/users/:id', requireSuperAdmin, (req, res) => {
+adminRouter.put('/users/:id', requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id)
   if (id === req.sessionUser!.id) {
     res.status(400).json({ message: 'Você não pode editar sua própria conta aqui.' })
@@ -74,30 +74,30 @@ adminRouter.put('/users/:id', requireSuperAdmin, (req, res) => {
     res.status(400).json({ message: 'Dados inválidos.' })
     return
   }
-  run(
-    `UPDATE admin_users SET name = ?, role = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`,
-    [name, role, isActive ? 1 : 0, id],
+  await run(
+    `UPDATE admin_users SET name = $1, role = $2, is_active = $3, updated_at = now() WHERE id = $4`,
+    [name, role, isActive, id],
   )
-  audit(req.sessionUser!.id, 'editar_admin', 'admin_user', id, name)
+  await audit(req.sessionUser!.id, 'editar_admin', 'admin_user', id, name)
   res.json({ ok: true })
 })
 
-adminRouter.delete('/users/:id', requireSuperAdmin, (req, res) => {
+adminRouter.delete('/users/:id', requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id)
   if (id === req.sessionUser!.id) {
     res.status(400).json({ message: 'Você não pode remover sua própria conta.' })
     return
   }
-  run('DELETE FROM admin_users WHERE id = ?', [id])
-  audit(req.sessionUser!.id, 'remover_admin', 'admin_user', id)
+  await run('DELETE FROM admin_users WHERE id = $1', [id])
+  await audit(req.sessionUser!.id, 'remover_admin', 'admin_user', id)
   res.json({ ok: true })
 })
 
 /* ── Sessões ativas (administração) ───────────────────────────────────── */
 
-adminRouter.get('/sessions', (_req, res) => {
+adminRouter.get('/sessions', async (_req, res) => {
   res.json({
-    sessions: getAll<Record<string, unknown>>(
+    sessions: await getAll<Record<string, unknown>>(
       `SELECT s.id, s.user_role, s.created_at, s.expires_at, s.user_id, u.email, a.email AS admin_email
        FROM sessions s
        LEFT JOIN users u ON u.id = s.user_id AND s.user_role = 'client'

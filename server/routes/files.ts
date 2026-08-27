@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import { requireAuth, requireAdmin } from '../auth.ts'
-import { resolveStoragePath } from '../lib/upload.ts'
-import { readFileSync, existsSync } from 'node:fs'
+import { downloadStorageObject } from '../lib/upload.ts'
 import { getOne } from '../db.ts'
 
 export const filesRouter = Router()
@@ -11,7 +10,7 @@ export const filesRouter = Router()
  * Acesso: admin sempre; cliente apenas se o arquivo for um documento
  * vinculado ao seu pet/usuário E estiver disponível.
  */
-filesRouter.get('/private/*path', requireAuth, (req, res) => {
+filesRouter.get('/private/*path', requireAuth, async (req, res) => {
   const rel = String(req.params.path)
   if (!rel || !rel.startsWith('docs/')) {
     res.status(400).json({ message: 'Caminho inválido.' })
@@ -20,8 +19,8 @@ filesRouter.get('/private/*path', requireAuth, (req, res) => {
 
   // Verificação de ownership para clientes — nunca confiar no caminho
   if (req.sessionUser!.role === 'client') {
-    const doc = getOne<{ client_id: number | null; pet_id: number | null; is_available: number }>(
-      'SELECT client_id, pet_id, is_available FROM documents WHERE file_path = ?',
+    const doc = await getOne<{ client_id: number | null; pet_id: number | null; is_available: boolean }>(
+      'SELECT client_id, pet_id, is_available FROM documents WHERE file_path = $1',
       [rel],
     )
     if (!doc || !doc.is_available) {
@@ -31,7 +30,7 @@ filesRouter.get('/private/*path', requireAuth, (req, res) => {
     const clientId = req.sessionUser!.id
     const ownsClient = doc.client_id === clientId
     const ownsPet = doc.pet_id
-      ? !!getOne<{ id: number }>('SELECT id FROM pets WHERE id = ? AND owner_id = ?', [doc.pet_id, clientId])
+      ? !!(await getOne<{ id: number }>('SELECT id FROM pets WHERE id = $1 AND owner_id = $2', [doc.pet_id, clientId]))
       : false
     if (!ownsClient && !ownsPet) {
       res.status(403).json({ message: 'Acesso negado.' })
@@ -40,12 +39,11 @@ filesRouter.get('/private/*path', requireAuth, (req, res) => {
   }
 
   try {
-    const abs = resolveStoragePath(rel)
-    if (!existsSync(abs)) {
+    const buffer = await downloadStorageObject(rel)
+    if (!buffer) {
       res.status(404).json({ message: 'Arquivo não encontrado.' })
       return
     }
-    const buffer = readFileSync(abs)
     const isPdf = rel.toLowerCase().endsWith('.pdf')
     res.setHeader('Content-Type', isPdf ? 'application/pdf' : 'application/octet-stream')
     res.setHeader('Content-Disposition', `inline; filename="${rel.split('/').pop()}"`)
@@ -56,15 +54,14 @@ filesRouter.get('/private/*path', requireAuth, (req, res) => {
 })
 
 /* Admin: baixar qualquer arquivo (auditado) */
-filesRouter.get('/admin/*path', requireAdmin, (req, res) => {
+filesRouter.get('/admin/*path', requireAdmin, async (req, res) => {
   const rel = String(req.params.path)
   try {
-    const abs = resolveStoragePath(rel)
-    if (!existsSync(abs)) {
+    const buffer = await downloadStorageObject(rel)
+    if (!buffer) {
       res.status(404).json({ message: 'Arquivo não encontrado.' })
       return
     }
-    const buffer = readFileSync(abs)
     res.setHeader('Content-Type', 'application/octet-stream')
     res.setHeader('Content-Disposition', `attachment; filename="${rel.split('/').pop()}"`)
     res.send(buffer)

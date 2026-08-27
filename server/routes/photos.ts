@@ -16,8 +16,8 @@ const ACCEPTED = ['.jpg', '.jpeg', '.png', '.webp']
 const photoKey = (name: string) => `photo:${name}`
 
 /** Lê uma foto enviada pelo admin (base64) ou null. */
-export function getAdminPhoto(name: string): string | null {
-  const row = getOne<{ value: string | null }>('SELECT value FROM site_settings WHERE key = ?', [photoKey(name)])
+export async function getAdminPhoto(name: string): Promise<string | null> {
+  const row = await getOne<{ value: string | null }>('SELECT value FROM site_settings WHERE key = $1', [photoKey(name)])
   return row?.value || null
 }
 
@@ -27,11 +27,11 @@ export function getAdminPhoto(name: string): string | null {
  * Retorna `{ files: Record<nome-base.ext, url> }` como antes, mas urls do admin
  * são servidas por rota autenticada (`/api/photos/file/:name`) em vez de estática.
  */
-photosRouter.get('/', (_req, res) => {
+photosRouter.get('/', async (_req, res) => {
   const files: Record<string, string> = {}
 
   // 1) Fotos do admin (site_settings)
-  const adminPhotos = getAll<{ key: string; value: string | null }>(
+  const adminPhotos = await getAll<{ key: string; value: string | null }>(
     `SELECT key, value FROM site_settings WHERE key LIKE 'photo:%'`,
   )
   for (const row of adminPhotos) {
@@ -40,7 +40,7 @@ photosRouter.get('/', (_req, res) => {
     files[`admin:${name}`] = `/api/photos/file/${encodeURIComponent(name)}`
   }
 
-  // 2) Arquivos reais em /public/photos
+  // 2) Arquivos reais em /public/photos (estáticos, embarcados no deploy)
   try {
     if (existsSync(PHOTOS_DIR)) {
       for (const f of readdirSync(PHOTOS_DIR)) {
@@ -58,9 +58,9 @@ photosRouter.get('/', (_req, res) => {
 })
 
 /** Serve uma foto enviada pelo admin (base64). */
-photosRouter.get('/file/:name', (req, res) => {
+photosRouter.get('/file/:name', async (req, res) => {
   const name = String(req.params.name).replace(/\.\./g, '').slice(0, 80)
-  const value = getAdminPhoto(name)
+  const value = await getAdminPhoto(name)
   if (!value) {
     res.status(404).json({ message: 'Foto não encontrada.' })
     return
@@ -91,7 +91,7 @@ const VALID_NAMES = new Set([
 ])
 
 /** Upload de foto (base64 via JSON) — substitui a atual se existir. */
-photosRouter.post('/admin', requireAdmin, (req, res) => {
+photosRouter.post('/admin', requireAdmin, async (req, res) => {
   const name = String(req.body?.name ?? '').trim().slice(0, 60)
   const data = String(req.body?.data ?? '')
   const mime = String(req.body?.mime ?? '')
@@ -113,30 +113,30 @@ photosRouter.post('/admin', requireAdmin, (req, res) => {
   }
 
   const value = `data:${mime};base64,${base64}`
-  run(
-    `INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+  await run(
+    `INSERT INTO site_settings (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
     [photoKey(name), value],
   )
-  audit(req.sessionUser!.id, 'editar_foto', 'site', 0, `Foto "${name}" atualizada`)
+  await audit(req.sessionUser!.id, 'editar_foto', 'site', 0, `Foto "${name}" atualizada`)
   res.json({ ok: true, name })
 })
 
 /** Remove a foto enviada pelo admin (volta ao fallback / arquivo público). */
-photosRouter.delete('/admin/:name', requireAdmin, (req, res) => {
+photosRouter.delete('/admin/:name', requireAdmin, async (req, res) => {
   const name = String(req.params.name).replace(/\.\./g, '').slice(0, 60)
   if (!VALID_NAMES.has(name)) {
     res.status(400).json({ message: 'Nome de foto inválido.' })
     return
   }
-  run('DELETE FROM site_settings WHERE key = ?', [photoKey(name)])
-  audit(req.sessionUser!.id, 'remover_foto', 'site', 0, `Foto "${name}" removida`)
+  await run('DELETE FROM site_settings WHERE key = $1', [photoKey(name)])
+  await audit(req.sessionUser!.id, 'remover_foto', 'site', 0, `Foto "${name}" removida`)
   res.json({ ok: true, name })
 })
 
 /** Lista as fotos que o admin pode trocar, com a atual (se houver). */
-photosRouter.get('/admin', requireAdmin, (_req, res) => {
-  const rows = getAll<{ key: string; value: string | null }>(
+photosRouter.get('/admin', requireAdmin, async (_req, res) => {
+  const rows = await getAll<{ key: string; value: string | null }>(
     `SELECT key, value FROM site_settings WHERE key LIKE 'photo:%'`,
   )
   const byName = new Map(rows.map((r) => [r.key.slice('photo:'.length), r.value]))

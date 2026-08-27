@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { api } from '@/lib/api'
 import { formatDateFull, formatVetName } from '@/lib/clinic'
-import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState, Modal, Divider } from '@/admin/ui'
+import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState, FormField, EditableModal, Toast } from '@/admin/ui'
 
 interface Appointment {
   id: number
+  pet_id: number
   pet_name: string
   client_name: string | null
   vet_name: string | null
@@ -34,6 +35,14 @@ const typeLabel: Record<string, string> = {
   consulta: 'Consulta', urgencia: 'Urgência', cirurgia: 'Cirurgia', retorno: 'Retorno', vacina: 'Vacinação', outros: 'Outros',
 }
 
+const typeOptions: Array<[string, string]> = [
+  ['consulta', 'Consulta'], ['urgencia', 'Urgência'], ['cirurgia', 'Cirurgia'], ['retorno', 'Retorno'], ['vacina', 'Vacinação'], ['outros', 'Outros'],
+]
+
+const statusOptions: Array<[string, string]> = [
+  ['agendada', 'Agendada'], ['realizada', 'Realizada'], ['cancelada', 'Cancelada'],
+]
+
 export default function Consultas() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [pets, setPets] = useState<PetOption[]>([])
@@ -43,7 +52,10 @@ export default function Consultas() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [detail, setDetail] = useState<Appointment | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState(EMPTY_FORM)
+  const [toastMsg, setToastMsg] = useState('')
+  const toastTimer = useRef<number | undefined>(undefined)
 
   const load = (q?: string) => {
     const query = q === undefined ? search : q
@@ -96,6 +108,73 @@ export default function Consultas() {
     await api.del(`/api/appointments/${a.id}`).catch(() => {})
     load()
   }
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMsg(''), 2500)
+  }
+
+  const setEdit = (k: keyof typeof editForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const openEdit = (a: Appointment) => {
+    setEditForm({
+      petId: String(a.pet_id),
+      type: a.type,
+      status: a.status,
+      vetName: a.vet_name ?? '',
+      scheduledAt: a.scheduled_at ? a.scheduled_at.replace(' ', 'T').slice(0, 16) : '',
+      summary: a.summary ?? '',
+      diagnosis: a.diagnosis ?? '',
+      notes: a.notes ?? '',
+    })
+    setEditingId(a.id)
+  }
+
+  const onSave = async () => {
+    if (editingId === null) return
+    if (!editForm.petId) throw new Error('Selecione o pet.')
+    await api.put(`/api/appointments/${editingId}`, {
+      petId: Number(editForm.petId),
+      vetName: editForm.vetName || null,
+      type: editForm.type,
+      scheduledAt: editForm.scheduledAt || null,
+      status: editForm.status,
+      summary: editForm.summary || null,
+      diagnosis: editForm.diagnosis || null,
+      notes: editForm.notes || null,
+    })
+  }
+
+  const onSaved = () => {
+    if (editingId === null) return
+    const pet = pets.find((p) => p.id === Number(editForm.petId))
+    const edited: Appointment = {
+      id: editingId,
+      pet_id: pet?.id ?? 0,
+      pet_name: pet?.name ?? '',
+      client_name: pet?.owner_name ?? null,
+      vet_name: editForm.vetName || null,
+      type: editForm.type,
+      scheduled_at: editForm.scheduledAt || null,
+      status: editForm.status,
+      summary: editForm.summary || null,
+      diagnosis: editForm.diagnosis || null,
+      notes: editForm.notes || null,
+    }
+    setAppointments((prev) => prev.map((a) => (a.id === edited.id ? edited : a)))
+    showToast('Consulta atualizada.')
+  }
+
+  const onRemove = async () => {
+    if (editingId === null) return
+    await api.del(`/api/appointments/${editingId}`)
+    setAppointments((prev) => prev.filter((a) => a.id !== editingId))
+    showToast('Consulta removida.')
+  }
+
+  const editPet = pets.find((p) => p.id === Number(editForm.petId))
+  const editSubtitle = [typeLabel[editForm.type] ?? editForm.type, editForm.vetName ? formatVetName(editForm.vetName) : ''].filter(Boolean).join(' · ')
 
   return (
     <div>
@@ -176,7 +255,7 @@ export default function Consultas() {
                     <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
                     <Td className="text-right">
                       <div className="inline-flex gap-1.5">
-                        <RowAction tone="ghost" onClick={() => setDetail(a)}>Ver</RowAction>
+                        <RowAction tone="ghost" onClick={() => openEdit(a)}>Ver</RowAction>
                         <RowAction tone="ghost" onClick={() => void remove(a)}>Remover</RowAction>
                       </div>
                     </Td>
@@ -188,46 +267,43 @@ export default function Consultas() {
         </Card>
       )}
 
-      {detail && (
-        <Modal onClose={() => setDetail(null)} label={`Consulta de ${detail.pet_name}`}>
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-azul/12 text-base font-black text-azul">
-                {detail.pet_name.charAt(0).toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <h2 className="truncate font-display text-xl font-black text-dark">{detail.pet_name}</h2>
-                <p className="truncate text-sm text-dark/55">
-                  {typeLabel[detail.type] ?? detail.type}
-                  {detail.vet_name ? ` · ${formatVetName(detail.vet_name)}` : ''}
-                </p>
-                <p className="mt-0.5 text-xs text-dark/45">{detail.scheduled_at ? formatDateFull(detail.scheduled_at) : 'Data não informada'}</p>
-              </div>
-            </div>
-          </div>
+      <EditableModal
+        open={editingId !== null}
+        onClose={() => setEditingId(null)}
+        onSave={onSave}
+        onSaved={onSaved}
+        onRemove={onRemove}
+        label="Editar consulta"
+        title={editPet?.name || 'Consulta'}
+        subtitle={editSubtitle || undefined}
+        avatar={
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-azul/12 text-base font-black text-azul">
+            {(editPet?.name || 'C').charAt(0).toUpperCase()}
+          </span>
+        }
+        saveLabel="Salvar alterações"
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            label="Pet *"
+            name="petId"
+            value={editForm.petId}
+            onChange={setEdit('petId')}
+            options={pets.map((p) => [String(p.id), p.owner_name ? `${p.name} · ${p.owner_name}` : p.name])}
+            className="sm:col-span-2"
+            hint="Tutor dono do pet."
+          />
+          <FormField label="Tipo" name="type" value={editForm.type} onChange={setEdit('type')} options={typeOptions} hint="Tipo de atendimento." />
+          <FormField label="Status" name="status" value={editForm.status} onChange={setEdit('status')} options={statusOptions} />
+          <FormField label="Médica responsável" name="vetName" value={editForm.vetName} onChange={setEdit('vetName')} placeholder="Dr.ª Cássia Carvalho" hint="Nome do profissional responsável." />
+          <FormField label="Data e horário" name="scheduledAt" type="datetime-local" value={editForm.scheduledAt} onChange={setEdit('scheduledAt')} hint="Deixe vazio se ainda não definida." />
+          <FormField label="Resumo" name="summary" textarea value={editForm.summary} onChange={setEdit('summary')} className="sm:col-span-2" placeholder="Motivo e resumo do atendimento." />
+          <FormField label="Diagnóstico" name="diagnosis" textarea value={editForm.diagnosis} onChange={setEdit('diagnosis')} className="sm:col-span-2" placeholder="Conclusão clínica." />
+          <FormField label="Observações" name="notes" textarea value={editForm.notes} onChange={setEdit('notes')} className="sm:col-span-2" placeholder="Notas adicionais, orientações e recomendações." />
+        </div>
+      </EditableModal>
 
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <Badge tone={statusBadge[detail.status]?.tone ?? 'blue'}>{statusBadge[detail.status]?.label ?? detail.status}</Badge>
-            {detail.client_name && <Badge tone="gray">{detail.client_name}</Badge>}
-          </div>
-
-          <Divider className="mb-4" />
-          <div className="space-y-5">
-            <Block title="Resumo" body={detail.summary} />
-            <Block title="Diagnóstico" body={detail.diagnosis} />
-            <Block title="Observações" body={detail.notes} />
-          </div>
-        </Modal>
-      )}
-    </div>
-  )
-}
-
-function Block({ title, body }: { title: string; body: string | null }) {
-  return (
-    <div>
-      <p className="font-display text-[11px] font-bold uppercase tracking-[0.16em] text-dark/45">{title}</p>
-      <p className="mt-1 text-sm leading-relaxed text-dark/75">{body || '—'}</p>
+      {toastMsg && <Toast kind="success" message={toastMsg} />}
     </div>
   )
 }

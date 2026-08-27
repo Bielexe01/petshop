@@ -1,11 +1,12 @@
-import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { api } from '@/lib/api'
 import { formatDate, formatVetName } from '@/lib/clinic'
-import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState } from '@/admin/ui'
+import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState, FormField, EditableModal, Toast } from '@/admin/ui'
 import { useSearchFilter } from '@/lib/useSearchFilter'
 
 interface Exam {
   id: number
+  pet_id: number
   pet_name: string
   client_name: string | null
   name: string
@@ -40,6 +41,10 @@ export default function Exames() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState(EMPTY_FORM)
+  const [toastMsg, setToastMsg] = useState('')
+  const toastTimer = useRef<number | undefined>(undefined)
   const { query, setQuery, filtered: filteredExams } = useSearchFilter(exams, (x) => [x.name, x.pet_name, x.client_name ?? '', x.vet_name ?? '', catLabel[x.category] ?? x.category, x.status])
 
   const load = () => {
@@ -86,6 +91,70 @@ export default function Exames() {
     await api.del(`/api/exams/${x.id}`).catch(() => {})
     load()
   }
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMsg(''), 2500)
+  }
+
+  const setEdit = (k: keyof typeof editForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const openEdit = (x: Exam) => {
+    setEditForm({
+      petId: String(x.pet_id),
+      name: x.name,
+      category: x.category,
+      status: x.status,
+      resultDate: x.result_date ? x.result_date.slice(0, 10) : '',
+      vetName: x.vet_name ?? '',
+      notes: x.notes ?? '',
+    })
+    setEditingId(x.id)
+  }
+
+  const onSave = async () => {
+    if (editingId === null) return
+    if (!editForm.petId) throw new Error('Selecione o pet.')
+    await api.put(`/api/exams/${editingId}`, {
+      petId: Number(editForm.petId),
+      name: editForm.name,
+      category: editForm.category,
+      status: editForm.status,
+      resultDate: editForm.resultDate || null,
+      vetName: editForm.vetName || null,
+      notes: editForm.notes || null,
+    })
+  }
+
+  const onSaved = () => {
+    if (editingId === null) return
+    const pet = pets.find((p) => p.id === Number(editForm.petId))
+    const edited: Exam = {
+      id: editingId,
+      pet_id: pet?.id ?? 0,
+      pet_name: pet?.name ?? '',
+      client_name: pet?.owner_name ?? null,
+      name: editForm.name,
+      category: editForm.category,
+      status: editForm.status,
+      result_date: editForm.resultDate || null,
+      vet_name: editForm.vetName || null,
+      notes: editForm.notes || null,
+    }
+    setExams((prev) => prev.map((e) => (e.id === edited.id ? edited : e)))
+    showToast('Exame atualizado.')
+  }
+
+  const onRemove = async () => {
+    if (editingId === null) return
+    await api.del(`/api/exams/${editingId}`)
+    setExams((prev) => prev.filter((e) => e.id !== editingId))
+    showToast('Exame removido.')
+  }
+
+  const editPet = pets.find((p) => p.id === Number(editForm.petId))
+  const editSubtitle = [editPet?.name, editForm.vetName ? formatVetName(editForm.vetName) : ''].filter(Boolean).join(' · ')
 
   return (
     <div>
@@ -172,7 +241,10 @@ export default function Exames() {
                     <Td><Badge tone={st.tone}>{st.label}</Badge></Td>
                     <Td>{x.result_date ? formatDate(x.result_date) : '—'}</Td>
                     <Td className="text-right">
-                      <RowAction tone="ghost" onClick={() => void remove(x)}>Remover</RowAction>
+                      <div className="inline-flex gap-1.5">
+                        <RowAction tone="ghost" onClick={() => openEdit(x)}>Ver</RowAction>
+                        <RowAction tone="ghost" onClick={() => void remove(x)}>Remover</RowAction>
+                      </div>
                     </Td>
                   </tr>
                 )
@@ -181,6 +253,55 @@ export default function Exames() {
           </Table>
         </Card>
       )}
+
+      <EditableModal
+        open={editingId !== null}
+        onClose={() => setEditingId(null)}
+        onSave={onSave}
+        onSaved={onSaved}
+        onRemove={onRemove}
+        label="Editar exame"
+        title={editForm.name || 'Exame'}
+        subtitle={editSubtitle || undefined}
+        avatar={
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-magenta/12 text-base font-black text-magenta">
+            {(editForm.name || 'E').charAt(0).toUpperCase()}
+          </span>
+        }
+        saveLabel="Salvar alterações"
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            label="Pet *"
+            name="petId"
+            value={editForm.petId}
+            onChange={setEdit('petId')}
+            options={pets.map((p) => [String(p.id), p.owner_name ? `${p.name} · ${p.owner_name}` : p.name])}
+            className="sm:col-span-2"
+            hint="Dono do exame."
+          />
+          <FormField label="Nome do exame *" name="name" value={editForm.name} onChange={setEdit('name')} placeholder="Ex.: Hemograma completo" />
+          <FormField label="Médica responsável" name="vetName" value={editForm.vetName} onChange={setEdit('vetName')} placeholder="Dr.ª Cássia Carvalho" hint="Nome do profissional responsável." />
+          <FormField
+            label="Categoria"
+            name="category"
+            value={editForm.category}
+            onChange={setEdit('category')}
+            options={[['laboratorial', 'Laboratorial'], ['imagem', 'Imagem'], ['outros', 'Outros']]}
+          />
+          <FormField
+            label="Status"
+            name="status"
+            value={editForm.status}
+            onChange={setEdit('status')}
+            options={[['pendente', 'Pendente'], ['em_andamento', 'Em andamento'], ['concluido', 'Concluído']]}
+          />
+          <FormField label="Data do resultado" name="resultDate" type="date" value={editForm.resultDate} onChange={setEdit('resultDate')} className="sm:col-span-2" hint="Data em que o resultado ficou disponível." />
+          <FormField label="Observações" name="notes" textarea value={editForm.notes} onChange={setEdit('notes')} className="sm:col-span-2" />
+        </div>
+      </EditableModal>
+
+      {toastMsg && <Toast kind="success" message={toastMsg} />}
     </div>
   )
 }

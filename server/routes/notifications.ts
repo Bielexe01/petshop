@@ -4,30 +4,30 @@ import { requireClient, requireAdmin, audit } from '../auth.ts'
 
 export const notificationsRouter = Router()
 
-notificationsRouter.get('/mine', requireClient, (req, res) => {
-  const notifications = getAll(
-    'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 60',
+notificationsRouter.get('/mine', requireClient, async (req, res) => {
+  const notifications = await getAll(
+    'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 60',
     [req.sessionUser!.id],
   )
-  const unread = getOne<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND is_read = 0', [
+  const unread = (await getOne<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE user_id = $1 AND is_read = false', [
     req.sessionUser!.id,
-  ])?.n ?? 0
+  ]))?.n ?? 0
   res.json({ notifications, unread })
 })
 
-notificationsRouter.post('/:id/read', requireClient, (req, res) => {
+notificationsRouter.post('/:id/read', requireClient, async (req, res) => {
   const id = Number(req.params.id)
-  run('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [id, req.sessionUser!.id])
+  await run('UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2', [id, req.sessionUser!.id])
   res.json({ ok: true })
 })
 
-notificationsRouter.post('/read-all', requireClient, (req, res) => {
-  run('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [req.sessionUser!.id])
+notificationsRouter.post('/read-all', requireClient, async (req, res) => {
+  await run('UPDATE notifications SET is_read = true WHERE user_id = $1', [req.sessionUser!.id])
   res.json({ ok: true })
 })
 
 /* Admin: cria notificação para um cliente */
-notificationsRouter.post('/', requireAdmin, (req, res) => {
+notificationsRouter.post('/', requireAdmin, async (req, res) => {
   const userId = Number(req.body.userId)
   const title = String(req.body.title ?? '').trim().slice(0, 120)
   const body = String(req.body.body ?? '').slice(0, 2000)
@@ -36,10 +36,10 @@ notificationsRouter.post('/', requireAdmin, (req, res) => {
     res.status(400).json({ message: 'Informe o cliente e o título.' })
     return
   }
-  const { lastInsertRowid } = run(
-    'INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)',
+  const { lastInsertRowid } = await run(
+    'INSERT INTO notifications (user_id, title, body, type) VALUES ($1, $2, $3, $4) RETURNING id',
     [userId, title, body || null, type],
   )
-  audit(req.sessionUser!.id, 'criar_notificacao', 'notification', Number(lastInsertRowid), title)
-  res.status(201).json({ notification: { id: Number(lastInsertRowid) } })
+  await audit(req.sessionUser!.id, 'criar_notificacao', 'notification', lastInsertRowid, title)
+  res.status(201).json({ notification: { id: lastInsertRowid } })
 })

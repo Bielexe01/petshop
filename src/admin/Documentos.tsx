@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { api, openFile } from '@/lib/api'
 import { formatDate } from '@/lib/clinic'
-import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState } from '@/admin/ui'
+import { PageHeader, Card, Badge, Table, Th, Td, RowAction, SearchInput, EmptyState, FormField, EditableModal, Toast } from '@/admin/ui'
 import { useSearchFilter } from '@/lib/useSearchFilter'
 import { ViewIcon } from '@/portal/icons'
 
@@ -43,6 +43,27 @@ const EMPTY_FORM = { title: '', type: 'veterinario', clientId: '', petId: '', is
 
 const MAX_SIZE = 10 * 1024 * 1024
 
+const TYPE_OPTIONS: Array<[string, string]> = [
+  ['receita', 'Receita'],
+  ['exame', 'Exame'],
+  ['atestado', 'Atestado'],
+  ['comprovante', 'Comprovante'],
+  ['veterinario', 'Veterinário'],
+]
+
+const AVAILABILITY_OPTIONS: Array<[string, string]> = [
+  ['1', 'Visível'],
+  ['0', 'Oculto'],
+]
+
+interface EditForm {
+  title: string
+  type: string
+  clientId: string
+  petId: string
+  isAvailable: string
+}
+
 export default function Documentos() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
@@ -57,6 +78,11 @@ export default function Documentos() {
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const { query, setQuery, filtered: filteredDocs } = useSearchFilter(documents, (d) => [d.title, d.pet_name ?? '', d.file_name, typeMeta[d.type]?.label ?? ''])
+
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<EditForm>({ title: '', type: 'veterinario', clientId: '', petId: '', isAvailable: '1' })
+  const [toastMsg, setToastMsg] = useState('')
+  const toastTimer = useRef<number>(0)
 
   const load = () => {
     api.get<{ documents: Document[] }>('/api/documents').then((r) => setDocuments(r.documents)).catch(() => {}).finally(() => setLoading(false))
@@ -73,7 +99,17 @@ export default function Documentos() {
     }).catch(() => {})
   }, [])
 
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
+  const flashToast = (msg: string) => {
+    setToastMsg(msg)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMsg(''), 2500)
+  }
+
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const setEdit = (k: keyof EditForm) => (e: { target: { value: string } }) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -152,8 +188,83 @@ export default function Documentos() {
 
   const view = (d: Document) => void openFile(`/api/documents/admin/${d.id}/file`).catch(() => alert('Não foi possível abrir o documento.'))
 
+  const openEdit = (d: Document) => {
+    setEditForm({
+      title: d.title,
+      type: d.type,
+      clientId: d.client_id != null ? String(d.client_id) : '',
+      petId: d.pet_id != null ? String(d.pet_id) : '',
+      isAvailable: d.is_available ? '1' : '0',
+    })
+    setEditingId(d.id)
+  }
+
+  const namesFor = (clientId: string, petId: string) => {
+    const client = clientId ? clients.find((c) => c.id === Number(clientId)) : undefined
+    const pet = petId ? pets.find((p) => p.id === Number(petId)) : undefined
+    return { client_name: client?.full_name ?? null, pet_name: pet?.name ?? null }
+  }
+
+  const saveEdit = async () => {
+    if (editingId == null) return
+    await api.put(`/api/documents/${editingId}`, {
+      title: editForm.title,
+      type: editForm.type,
+      clientId: editForm.clientId ? Number(editForm.clientId) : null,
+      petId: editForm.petId ? Number(editForm.petId) : null,
+      isAvailable: editForm.isAvailable === '1',
+    })
+  }
+
+  const handleSaved = () => {
+    if (editingId == null) return
+    const clientId = editForm.clientId ? Number(editForm.clientId) : null
+    const petId = editForm.petId ? Number(editForm.petId) : null
+    const { client_name, pet_name } = namesFor(editForm.clientId, editForm.petId)
+    setDocuments((docs) =>
+      docs.map((d) =>
+        d.id === editingId
+          ? {
+              ...d,
+              title: editForm.title,
+              type: editForm.type,
+              client_id: clientId,
+              pet_id: petId,
+              client_name,
+              pet_name,
+              is_available: editForm.isAvailable === '1' ? 1 : 0,
+            }
+          : d,
+      ),
+    )
+    flashToast('Documento atualizado.')
+  }
+
+  const removeEdit = async () => {
+    if (editingId == null) return
+    await api.del(`/api/documents/${editingId}`)
+    setDocuments((docs) => docs.filter((d) => d.id !== editingId))
+    flashToast('Documento removido.')
+  }
+
+  const editingDoc = editingId != null ? documents.find((d) => d.id === editingId) ?? null : null
+
+  const clientOptions: Array<[string, string]> = [
+    ['', 'Sem vínculo de cliente'],
+    ...clients.map((c) => [String(c.id), `${c.full_name ?? 'Sem nome'} · ${c.email}`] as [string, string]),
+  ]
+
+  const petOptions: Array<[string, string]> = [
+    ['', 'Sem vínculo de pet'],
+    ...pets.map((p) => [String(p.id), p.owner_name ? `${p.name} · ${p.owner_name}` : p.name] as [string, string]),
+  ]
+
+  const selectedEditClient = editForm.clientId ? clients.find((c) => c.id === Number(editForm.clientId)) : undefined
+
   return (
     <div>
+      {toastMsg && <Toast kind="success" message={toastMsg} />}
+
       <PageHeader
         title="Documentos"
         subtitle="Envie documentos e controle a disponibilidade para o cliente."
@@ -259,7 +370,7 @@ export default function Documentos() {
                     <Td><Badge tone={d.is_available ? 'green' : 'red'}>{d.is_available ? 'Visível' : 'Oculto'}</Badge></Td>
                     <Td className="text-right">
                       <div className="inline-flex gap-1.5">
-                        <RowAction tone="ghost" onClick={() => view(d)}><ViewIcon className="h-3.5 w-3.5" /> Ver</RowAction>
+                        <RowAction tone="ghost" onClick={() => openEdit(d)}><ViewIcon className="h-3.5 w-3.5" /> Ver</RowAction>
                         <RowAction tone="ghost" onClick={() => void toggleAvailable(d)}>{d.is_available ? 'Ocultar' : 'Mostrar'}</RowAction>
                         <RowAction tone="ghost" onClick={() => void remove(d)}>Remover</RowAction>
                       </div>
@@ -270,6 +381,72 @@ export default function Documentos() {
             </tbody>
           </Table>
         </Card>
+      )}
+
+      {editingDoc && (
+        <EditableModal
+          open={editingId !== null}
+          onClose={() => setEditingId(null)}
+          onSave={saveEdit}
+          onSaved={handleSaved}
+          onRemove={removeEdit}
+          label="Editar documento"
+          title={editForm.title || 'Documento'}
+          subtitle={(() => {
+            const names = namesFor(editForm.clientId, editForm.petId)
+            return [names.pet_name, names.client_name].filter(Boolean).join(' · ') || 'Sem vínculo'
+          })()}
+          avatar={
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-magenta/10 font-display text-xl font-black text-magenta">
+              {(editForm.title || 'D').charAt(0).toUpperCase()}
+            </span>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void view(editingDoc)}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-turquesa/50 px-4 text-sm font-medium text-turquesa transition-colors hover:bg-turquesa/5 sm:col-span-2"
+            >
+              <ViewIcon className="h-4 w-4" /> Abrir arquivo · {editingDoc.file_name}
+            </button>
+            <FormField
+              label="Título *"
+              name="title"
+              required
+              value={editForm.title}
+              onChange={setEdit('title')}
+              placeholder="Ex.: Hemograma completo — Thor"
+              hint="Título exibido na área do cliente."
+              className="sm:col-span-2"
+            />
+            <FormField label="Tipo" name="type" options={TYPE_OPTIONS} value={editForm.type} onChange={setEdit('type')} />
+            <FormField
+              label="Disponível"
+              name="isAvailable"
+              options={AVAILABILITY_OPTIONS}
+              value={editForm.isAvailable}
+              onChange={setEdit('isAvailable')}
+              hint="Enquanto 'Oculto', o cliente não o vê no portal."
+            />
+            <FormField
+              label="Cliente"
+              name="clientId"
+              options={clientOptions}
+              value={editForm.clientId}
+              onChange={setEdit('clientId')}
+              hint={selectedEditClient ? `E-mail: ${selectedEditClient.email} — não editável.` : 'Sem vínculo de cliente.'}
+            />
+            <FormField
+              label="Pet"
+              name="petId"
+              options={petOptions}
+              value={editForm.petId}
+              onChange={setEdit('petId')}
+              hint="Vincule o pet correspondente, se houver."
+            />
+          </div>
+        </EditableModal>
       )}
     </div>
   )
