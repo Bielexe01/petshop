@@ -6,6 +6,17 @@ import { fileURLToPath } from 'node:url'
 import { closeDb } from './db.ts'
 import { attachSessionUser, clearSessionCookie, destroySession, parseCookies, requireAuth } from './auth.ts'
 
+// Carrega o .env (DATABASE_URL, SUPABASE_*) quando o servidor roda direto
+// (`node server/index.ts`). A Vercel injeta as env vars no ambiente; aqui só
+// carregamos se o arquivo existir e as variáveis ainda não estiverem setadas.
+try {
+  if (!process.env.DATABASE_URL && existsSync(join(process.cwd(), '.env'))) {
+    process.loadEnvFile(join(process.cwd(), '.env'))
+  }
+} catch {
+  /* sem .env local — a Vercel injeta as variáveis */
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /* Fotos reais fornecidas pelo usuário — servidas direto do public/photos

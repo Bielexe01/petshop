@@ -95,7 +95,9 @@ create table if not exists prescriptions (
   client_id        bigint not null references users(id) on delete cascade,
   appointment_id   bigint references appointments(id) on delete set null,
   vet_name         text,
-  issued_at        text not null,
+  -- issued_at em TEXT no formato 'YYYY-MM-DD HH:MM:SS'. Default now() para o
+  -- caso de a rota de criação omitir (admin deixa 'Emitida em' em branco).
+  issued_at        text not null default to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
   valid_until      text,
   instructions     text,
   is_demo          boolean not null default false,
