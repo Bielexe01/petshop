@@ -10,6 +10,12 @@
 --  valida em server/auth.ts):
 --    Cliente:  cliente@demo.com  /  Demo@1234
 --    Admin:    admin@clinica.com /  Admin@1234
+--
+--  OBS: os buckets `petphotos` e `docs` (Storage) precisam existir para
+--  upload de foto de pet / documentos. Criar pelo SQL Editor:
+--    insert into storage.buckets (id, name, public) values
+--      ('petphotos', 'petphotos', false),
+--      ('docs', 'docs', false);
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
