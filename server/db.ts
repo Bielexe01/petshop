@@ -23,11 +23,16 @@ export function getDb(): pg.Pool {
     )
   }
 
+  // Supabase exige SSL. Sem ele, a Vercel Function falha ao conectar no
+  // Postgres (500 em login/register/photos). rejectUnauthorized:false
+  // porque o Supabase usa um certificado válido, mas o envio via
+  // connection string não carrega a CA — aceitamos o cert verificado.
   pool = new Pool({
     connectionString,
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
+    ssl: { rejectUnauthorized: false },
   })
 
   // `pg` converte timestamptz em Date por padrão. O frontend (e o gerador
