@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
 import { prescriptionSchema } from '../lib/validation.ts'
-import { requireClient, requireAdmin, audit } from '../auth.ts'
+import { requireClient, requireScreen, requireAdmin, audit } from '../auth.ts'
 import { renderPdf, type PdfBlock } from '../lib/pdf.ts'
 
 export const prescriptionsRouter = Router()
@@ -134,7 +134,7 @@ prescriptionsRouter.get('/mine/:id/download', requireClient, async (req, res) =>
 
 /* ── Admin: CRUD ──────────────────────────────────────────────────────── */
 
-prescriptionsRouter.get('/', requireAdmin, async (_req, res) => {
+prescriptionsRouter.get('/', requireScreen('receitas'), async (_req, res) => {
   const prescriptions = await getAll(
     `SELECT p.*, pet.name AS pet_name, pr.full_name AS client_name
      FROM prescriptions p

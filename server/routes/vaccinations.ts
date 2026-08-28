@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
 import { vaccinationSchema } from '../lib/validation.ts'
-import { requireClient, requireAdmin, audit } from '../auth.ts'
+import { requireClient, requireScreen, requireAdmin, audit } from '../auth.ts'
 
 export const vaccinationsRouter = Router()
 
@@ -37,7 +37,7 @@ vaccinationsRouter.get('/pet/:petId', requireClient, async (req, res) => {
 
 /* ── Admin ────────────────────────────────────────────────────────────── */
 
-vaccinationsRouter.get('/', requireAdmin, async (_req, res) => {
+vaccinationsRouter.get('/', requireScreen('vacinas'), async (_req, res) => {
   const vaccinations = await getAll(
     `SELECT v.*, pet.name AS pet_name, pr.full_name AS client_name
      FROM vaccinations v

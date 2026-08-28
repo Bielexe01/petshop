@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
 import { examSchema } from '../lib/validation.ts'
-import { requireClient, requireAdmin, audit } from '../auth.ts'
+import { requireClient, requireScreen, requireAdmin, audit } from '../auth.ts'
 
 export const examsRouter = Router()
 
@@ -37,7 +37,7 @@ examsRouter.get('/pet/:petId', requireClient, async (req, res) => {
 
 /* ── Admin: CRUD ──────────────────────────────────────────────────────── */
 
-examsRouter.get('/', requireAdmin, async (_req, res) => {
+examsRouter.get('/', requireScreen('exames'), async (_req, res) => {
   const exams = await getAll(
     `SELECT e.*, pet.name AS pet_name, pr.full_name AS client_name
      FROM exams e

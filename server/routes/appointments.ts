@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
 import { appointmentSchema } from '../lib/validation.ts'
-import { requireClient, requireAdmin, audit } from '../auth.ts'
+import { requireClient, requireScreen, requireAdmin, audit } from '../auth.ts'
 
 export const appointmentsRouter = Router()
 
@@ -65,7 +65,7 @@ appointmentsRouter.post('/request', requireClient, async (req, res) => {
 
 /* ── Admin: CRUD completo ─────────────────────────────────────────────── */
 
-appointmentsRouter.get('/', requireAdmin, async (req, res) => {
+appointmentsRouter.get('/', requireScreen('consultas'), async (req, res) => {
   const { search } = req.query
   let sql = `SELECT a.*, p.name AS pet_name, pr.full_name AS client_name
              FROM appointments a

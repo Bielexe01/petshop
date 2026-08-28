@@ -8,6 +8,8 @@ export interface SessionUser {
   name: string
   /** Apenas UI-gating (mostrar/esconder telas). Autorização real é no backend. */
   isSuperAdmin?: boolean
+  /** Telas permitidas ao admin logado (RBAC por tela). Superadmin tem todas. */
+  screens?: string[]
 }
 
 interface SessionContextValue {

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
-import { requireClient, requireAdmin, audit } from '../auth.ts'
+import { requireClient, requireScreen, requireAdmin, audit } from '../auth.ts'
 import { saveUploadedFile, downloadStorageObject, removeStorageObject } from '../lib/upload.ts'
 
 export const documentsRouter = Router()
@@ -71,7 +71,7 @@ documentsRouter.get('/mine/:id/download', requireClient, async (req, res) => {
 
 /* ── Admin: CRUD ──────────────────────────────────────────────────────── */
 
-documentsRouter.get('/', requireAdmin, async (_req, res) => {
+documentsRouter.get('/', requireScreen('documentos'), async (_req, res) => {
   const documents = await getAll(
     `SELECT d.*, pet.name AS pet_name, pr.full_name AS client_name
      FROM documents d

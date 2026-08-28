@@ -146,6 +146,7 @@ export const adminCreateSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   role: z.enum(['admin', 'superadmin']).default('admin'),
+  roleId: z.number().int().positive().optional().nullable(),
 })
 
 /* ── Documento (upload) ──────────────────────────────────────────────── */

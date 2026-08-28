@@ -23,6 +23,14 @@ interface StaffMember {
   role: 'admin' | 'superadmin'
   is_active: boolean
   created_at: string
+  role_id: number | null
+  role_name: string | null
+}
+
+interface Role {
+  id: number
+  name: string
+  is_active: boolean
 }
 
 interface EditForm {
@@ -30,11 +38,12 @@ interface EditForm {
   email: string
   role: string
   isActive: string
+  roleId: string
 }
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'admin' }
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'admin', roleId: '' }
 
-const EMPTY_EDIT: EditForm = { name: '', email: '', role: 'admin', isActive: '1' }
+const EMPTY_EDIT: EditForm = { name: '', email: '', role: 'admin', isActive: '1', roleId: '' }
 
 /**
  * Gestão de funcionários (contas admin) — exclusivo do superadministrador.
@@ -45,6 +54,7 @@ const EMPTY_EDIT: EditForm = { name: '', email: '', role: 'admin', isActive: '1'
 export default function Funcionarios() {
   const { user } = useSession()
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -64,8 +74,16 @@ export default function Funcionarios() {
       .finally(() => setLoading(false))
   }
 
+  const loadRoles = () => {
+    api
+      .get<{ roles: Role[] }>('/api/admin/roles')
+      .then((r) => setRoles(r.roles.filter((role) => role.is_active)))
+      .catch(() => setRoles([]))
+  }
+
   useEffect(() => {
     load()
+    loadRoles()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -93,6 +111,7 @@ export default function Funcionarios() {
         email: form.email,
         password: form.password,
         role: form.role,
+        roleId: form.roleId || null,
       })
       setForm(EMPTY_FORM)
       setShowForm(false)
@@ -110,6 +129,7 @@ export default function Funcionarios() {
       email: m.email,
       role: m.role,
       isActive: m.is_active ? '1' : '0',
+      roleId: m.role_id ? String(m.role_id) : '',
     })
     setEditingId(m.id)
   }
@@ -124,6 +144,7 @@ export default function Funcionarios() {
       name: edit.name,
       role: edit.role,
       isActive: edit.isActive === '1',
+      roleId: edit.roleId || null,
     })
   }
 
@@ -137,6 +158,8 @@ export default function Funcionarios() {
               name: edit.name,
               role: edit.role as StaffMember['role'],
               is_active: edit.isActive === '1',
+              role_id: edit.roleId ? Number(edit.roleId) : null,
+              role_name: edit.roleId ? roles.find((r) => r.id === Number(edit.roleId))?.name ?? m.role_name : null,
             }
           : m,
       ),
@@ -152,7 +175,7 @@ export default function Funcionarios() {
   }
 
   const toggleActive = async (m: StaffMember) => {
-    await api.put(`/api/admin/users/${m.id}`, { name: m.name, role: m.role, isActive: m.is_active === false }).catch(() => {})
+    await api.put(`/api/admin/users/${m.id}`, { name: m.name, role: m.role, isActive: m.is_active === false, roleId: m.role_id }).catch(() => {})
     load()
   }
 
@@ -204,13 +227,21 @@ export default function Funcionarios() {
             <FormField
               label="Papel"
               options={[
-                ['admin', 'Administrador (acesso total)'],
-                ['superadmin', 'Superadministrador (gerencia funcionários)'],
+                ['admin', 'Administrador (papel da equipe)'],
+                ['superadmin', 'Superadministrador (acesso total)'],
               ]}
               value={form.role}
               onChange={set('role')}
               className="sm:col-span-2"
-              hint="Superadministrador também pode criar e administrar outros funcionários."
+              hint="Superadministrador sempre tem acesso total e não usa papel da equipe."
+            />
+            <FormField
+              label="Papel da equipe"
+              options={[['', 'Sem papel (acesso restrito)'], ...roleOptions(roles)]}
+              value={form.roleId}
+              onChange={set('roleId')}
+              className="sm:col-span-2"
+              hint="Define quais telas do painel este funcionário acessa. Gerencie em Papéis."
             />
             {error && <p role="alert" className="rounded-lg border border-magenta/25 bg-magenta/8 px-4 py-2.5 text-sm font-medium text-magenta sm:col-span-2">{error}</p>}
             <div className="sm:col-span-2">
@@ -252,9 +283,12 @@ export default function Funcionarios() {
                       <p className="text-xs text-dark/45">{m.email}</p>
                     </Td>
                     <Td>
-                      <Badge tone={m.role === 'superadmin' ? 'magenta' : 'turquesa'}>
-                        {m.role === 'superadmin' ? 'Superadmin' : 'Administrador'}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge tone={m.role === 'superadmin' ? 'magenta' : 'turquesa'}>
+                          {m.role === 'superadmin' ? 'Superadmin' : 'Administrador'}
+                        </Badge>
+                        {m.role_name && <Badge tone="gray">{m.role_name}</Badge>}
+                      </div>
                     </Td>
                     <Td>
                       <Badge tone={m.is_active ? 'green' : 'red'}>{m.is_active ? 'Ativo' : 'Inativo'}</Badge>
@@ -305,11 +339,18 @@ export default function Funcionarios() {
           <FormField
             label="Papel"
             options={[
-              ['admin', 'Administrador (acesso total)'],
-              ['superadmin', 'Superadministrador (gerencia funcionários)'],
+              ['admin', 'Administrador (papel da equipe)'],
+              ['superadmin', 'Superadministrador (acesso total)'],
             ]}
             value={edit.role}
             onChange={setEditField('role')}
+            className="sm:col-span-2"
+          />
+          <FormField
+            label="Papel da equipe"
+            options={[['', 'Sem papel (acesso restrito)'], ...roleOptions(roles)]}
+            value={edit.roleId}
+            onChange={setEditField('roleId')}
             className="sm:col-span-2"
           />
           <FormField label="Status" options={[['1', 'Ativo'], ['0', 'Inativo']]} value={edit.isActive} onChange={setEditField('isActive')} />
@@ -319,6 +360,11 @@ export default function Funcionarios() {
       {toast && <Toast kind={toast.kind} message={toast.message} />}
     </div>
   )
+}
+
+/** Opções de papel da equipe para os dropdowns (id → nome). */
+function roleOptions(roles: Role[]): Array<[string, string]> {
+  return roles.map((r) => [String(r.id), r.name])
 }
 
 /** Iniciais do funcionário para o avatar do cabeçalho. */

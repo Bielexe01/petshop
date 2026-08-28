@@ -61,7 +61,27 @@ export interface SessionUser {
    * o backend relê o papel em admin_users via requireSuperAdmin.
    */
   isSuperAdmin?: boolean
+  /** Telas permitidas ao admin logado (RBAC por tela). Superadmin sempre tem todas. */
+  screens?: string[]
 }
+
+/** Keys das telas do painel admin (ordem de exibição). */
+export const SCREENS = [
+  'dashboard',
+  'clientes',
+  'pets',
+  'consultas',
+  'receitas',
+  'exames',
+  'vacinas',
+  'documentos',
+  'fotos',
+  'auditoria',
+  'funcionarios',
+] as const
+
+/** Papéis pré-criados que não podem ser removidos (mas podem ser editados). */
+export const SEEDED_ROLE_NAMES = ['Recepcionista', 'Veterinário', 'Financeiro'] as const
 
 export interface Session {
   token: string
@@ -93,7 +113,7 @@ export async function destroySession(token: string | undefined) {
   await run('DELETE FROM sessions WHERE token_hash = $1', [sha256(token)])
 }
 
-async function resolveSession(token: string | undefined): Promise<SessionUser | null> {
+export async function resolveSession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null
   const row = await getOne<{
     token_hash: string
@@ -118,12 +138,18 @@ async function resolveSession(token: string | undefined): Promise<SessionUser | 
     return { id: u.id, email: u.email, role: 'client', name: p?.full_name ?? 'Cliente' }
   }
 
-  const a = await getOne<{ id: number; email: string; name: string; role: string; is_active: boolean }>(
-    'SELECT id, email, name, role, is_active FROM admin_users WHERE id = $1',
+  const a = await getOne<{ id: number; email: string; name: string; role: string; is_active: boolean; role_screens: string | string[] | null }>(
+    `SELECT u.id, u.email, u.name, u.role, u.is_active, r.screens AS role_screens
+     FROM admin_users u
+     LEFT JOIN admin_roles r ON r.id = u.role_id AND r.is_active = true
+     WHERE u.id = $1`,
     [row.user_id],
   )
   if (!a || !a.is_active) return null
-  return { id: a.id, email: a.email, role: 'admin', name: a.name, isSuperAdmin: a.role === 'superadmin' }
+  // Superadmin: acesso total a todas as telas, sempre (o dono da clínica).
+  // Admin: telas do papel; sem papel = nenhuma tela.
+  const screens = a.role === 'superadmin' ? [...SCREENS] : parseScreens(a.role_screens)
+  return { id: a.id, email: a.email, role: 'admin', name: a.name, isSuperAdmin: a.role === 'superadmin', screens }
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -212,6 +238,41 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
     }
     next()
   })
+}
+
+/**
+ * Faz parse do JSONB `screens` do papel; nunca lança (papeis inválidos = sem telas).
+ * O driver `pg` já deserializa `jsonb` como array, então aceitamos ambos.
+ */
+function parseScreens(raw: string | string[] | null | undefined): string[] {
+  if (!raw) return []
+  const arr = Array.isArray(raw) ? raw : (() => {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return null
+    }
+  })()
+  if (!Array.isArray(arr)) return []
+  // Filtra para conter apenas keys válidas e sem duplicatas.
+  return [...new Set(arr.filter((s): s is (typeof SCREENS)[number] => (SCREENS as readonly string[]).includes(s)))]
+}
+
+/**
+ * Exige sessão admin E que `screen` esteja nas telas permitidas do papel.
+ * O superadmin sempre passa (o `resolveSession` já resolve todas as telas).
+ * É a autoridade real de acesso por tela — o frontend nunca decide.
+ */
+export function requireScreen(screen: (typeof SCREENS)[number]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    requireAdmin(req, res, () => {
+      if (!req.sessionUser?.screens?.includes(screen)) {
+        res.status(403).json({ message: 'Acesso restrito à sua função.' })
+        return
+      }
+      next()
+    })
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────

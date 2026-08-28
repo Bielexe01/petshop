@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
-import { requireAdmin, requireClient, audit, hashPassword } from '../auth.ts'
+import { requireScreen, requireAdmin, requireClient, audit, hashPassword } from '../auth.ts'
 import { clientCreateSchema, clientUpdateSchema } from '../lib/validation.ts'
 
 export const clientsRouter = Router()
@@ -19,7 +19,7 @@ clientsRouter.get('/me', requireClient, async (req, res) => {
 
 /* ── Admin: CRUD de clientes ──────────────────────────────────────────── */
 
-clientsRouter.get('/', requireAdmin, async (req, res) => {
+clientsRouter.get('/', requireScreen('clientes'), async (req, res) => {
   const { search } = req.query
   let sql = `SELECT u.id, u.email, u.is_active, u.created_at, p.full_name, p.cpf, p.phone,
                     (SELECT COUNT(*) FROM pets pt WHERE pt.owner_id = u.id) AS pets_count

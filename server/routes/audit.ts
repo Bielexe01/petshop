@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import { getAll } from '../db.ts'
-import { requireAdmin } from '../auth.ts'
+import { requireScreen } from '../auth.ts'
 
 export const auditRouter = Router()
 
-auditRouter.get('/', requireAdmin, async (req, res) => {
+auditRouter.get('/', requireScreen('auditoria'), async (req, res) => {
   const { limit } = req.query
   const rows = await getAll<Record<string, unknown>>(
     `SELECT a.*, ad.name AS admin_name

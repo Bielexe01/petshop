@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { getOne, getAll, run } from '../db.ts'
 import { petSchema } from '../lib/validation.ts'
-import { requireClient, requireAdmin, audit } from '../auth.ts'
+import { requireClient, requireScreen, requireAdmin, audit } from '../auth.ts'
 import { saveImage, downloadStorageObject, removeStorageObject } from '../lib/upload.ts'
 
 export const petsRouter = Router()
@@ -131,7 +131,7 @@ petsRouter.get('/mine/:id/photo', requireClient, async (req, res) => {
 
 /* ── Admin: CRUD completo ─────────────────────────────────────────────── */
 
-petsRouter.get('/', requireAdmin, async (req, res) => {
+petsRouter.get('/', requireScreen('pets'), async (req, res) => {
   const { search } = req.query
   let sql = `SELECT p.*, u.email AS owner_email, pr.full_name AS owner_name
              FROM pets p

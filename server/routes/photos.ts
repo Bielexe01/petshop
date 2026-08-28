@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getOne, getAll, run } from '../db.ts'
-import { requireAdmin, audit } from '../auth.ts'
+import { requireScreen, requireAdmin, audit } from '../auth.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PHOTOS_DIR = join(__dirname, '..', '..', 'public', 'photos')
@@ -135,7 +135,7 @@ photosRouter.delete('/admin/:name', requireAdmin, async (req, res) => {
 })
 
 /** Lista as fotos que o admin pode trocar, com a atual (se houver). */
-photosRouter.get('/admin', requireAdmin, async (_req, res) => {
+photosRouter.get('/admin', requireScreen('fotos'), async (_req, res) => {
   const rows = await getAll<{ key: string; value: string | null }>(
     `SELECT key, value FROM site_settings WHERE key LIKE 'photo:%'`,
   )

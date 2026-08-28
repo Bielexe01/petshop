@@ -3,6 +3,7 @@ import { getOne, run, getAll } from '../db.ts'
 import {
   createSession,
   destroySession,
+  resolveSession,
   hashPassword,
   verifyPassword,
   isRateLimited,
@@ -78,12 +79,12 @@ authRouter.post('/login', async (req, res) => {
       return
     }
     await resetRateLimit(key)
-    // A flag isSuperAdmin vai na sessão apenas para o front decidir visibilidade
-    // (UI-gating). A autorização real é do requireSuperAdmin no servidor, que
-    // relê o papel em admin_users a cada request.
     const session = await createSession(admin.id, 'admin', admin.name, admin.email, admin.role === 'superadmin')
     setSessionCookie(res, session.token)
-    res.json({ user: session.user })
+    // Monta `screens` (RBAC por tela) com a mesma lógica do /api/me
+    // (resolveSession), para o frontend aplicar o UI-gating já no login.
+    const resolved = await resolveSession(session.token)
+    res.json({ user: { ...session.user, screens: resolved?.screens } })
     return
   }
 

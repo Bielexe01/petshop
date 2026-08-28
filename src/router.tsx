@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useSession } from '@/lib/session'
 import { FullPageLoader } from '@/components/ui/Loader'
+import { GuardScreen } from '@/admin/GuardScreen'
 
 /* ── Código dividido por área ─────────────────────────────────────────── */
 const Landing = lazy(() => import('@/landing/Landing'))
@@ -37,6 +38,7 @@ const AdminDocumentos = lazy(() => import('@/admin/Documentos'))
 const AdminFotos = lazy(() => import('@/admin/Fotos'))
 const AdminLogs = lazy(() => import('@/admin/Logs'))
 const AdminFuncionarios = lazy(() => import('@/admin/Funcionarios'))
+const AdminPapeis = lazy(() => import('@/admin/Papeis'))
 
 const SuspenseWrapper = ({ children }: { children: ReactNode }) => (
   <Suspense fallback={<FullPageLoader />}>{children}</Suspense>
@@ -232,7 +234,9 @@ export function AppRouter() {
             index
             element={
               <SuspenseWrapper>
-                <AdminDashboard />
+                <GuardScreen screen="dashboard">
+                  <AdminDashboard />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -240,7 +244,9 @@ export function AppRouter() {
             path="clientes"
             element={
               <SuspenseWrapper>
-                <AdminClientes />
+                <GuardScreen screen="clientes">
+                  <AdminClientes />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -248,7 +254,9 @@ export function AppRouter() {
             path="pets"
             element={
               <SuspenseWrapper>
-                <AdminPets />
+                <GuardScreen screen="pets">
+                  <AdminPets />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -256,7 +264,9 @@ export function AppRouter() {
             path="consultas"
             element={
               <SuspenseWrapper>
-                <AdminConsultas />
+                <GuardScreen screen="consultas">
+                  <AdminConsultas />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -264,7 +274,9 @@ export function AppRouter() {
             path="receitas"
             element={
               <SuspenseWrapper>
-                <AdminReceitas />
+                <GuardScreen screen="receitas">
+                  <AdminReceitas />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -272,7 +284,9 @@ export function AppRouter() {
             path="exames"
             element={
               <SuspenseWrapper>
-                <AdminExames />
+                <GuardScreen screen="exames">
+                  <AdminExames />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -280,7 +294,9 @@ export function AppRouter() {
             path="vacinas"
             element={
               <SuspenseWrapper>
-                <AdminVacinas />
+                <GuardScreen screen="vacinas">
+                  <AdminVacinas />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -288,7 +304,9 @@ export function AppRouter() {
             path="documentos"
             element={
               <SuspenseWrapper>
-                <AdminDocumentos />
+                <GuardScreen screen="documentos">
+                  <AdminDocumentos />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -296,7 +314,9 @@ export function AppRouter() {
             path="fotos"
             element={
               <SuspenseWrapper>
-                <AdminFotos />
+                <GuardScreen screen="fotos">
+                  <AdminFotos />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -304,7 +324,9 @@ export function AppRouter() {
             path="logs"
             element={
               <SuspenseWrapper>
-                <AdminLogs />
+                <GuardScreen screen="auditoria">
+                  <AdminLogs />
+                </GuardScreen>
               </SuspenseWrapper>
             }
           />
@@ -313,6 +335,14 @@ export function AppRouter() {
             element={
               <SuspenseWrapper>
                 <AdminFuncionarios />
+              </SuspenseWrapper>
+            }
+          />
+          <Route
+            path="papeis"
+            element={
+              <SuspenseWrapper>
+                <AdminPapeis />
               </SuspenseWrapper>
             }
           />
