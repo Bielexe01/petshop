@@ -56,6 +56,11 @@ export interface SessionUser {
   email: string
   role: 'client' | 'admin'
   name: string
+  /**
+   * Apenas UI-gating (mostrar/esconder telas). Nunca autoriza nada —
+   * o backend relê o papel em admin_users via requireSuperAdmin.
+   */
+  isSuperAdmin?: boolean
 }
 
 export interface Session {
@@ -68,6 +73,7 @@ export async function createSession(
   role: 'client' | 'admin',
   name: string,
   email: string,
+  isSuperAdmin?: boolean,
 ): Promise<Session> {
   const token = generateToken()
   const tokenHash = sha256(token)
@@ -79,7 +85,7 @@ export async function createSession(
     [tokenHash, userId, role, expiresAt.toISOString()],
   )
 
-  return { token, user: { id: userId, email, role, name } }
+  return { token, user: { id: userId, email, role, name, isSuperAdmin } }
 }
 
 export async function destroySession(token: string | undefined) {
@@ -112,12 +118,12 @@ async function resolveSession(token: string | undefined): Promise<SessionUser | 
     return { id: u.id, email: u.email, role: 'client', name: p?.full_name ?? 'Cliente' }
   }
 
-  const a = await getOne<{ id: number; email: string; name: string; is_active: boolean }>(
-    'SELECT id, email, name, is_active FROM admin_users WHERE id = $1',
+  const a = await getOne<{ id: number; email: string; name: string; role: string; is_active: boolean }>(
+    'SELECT id, email, name, role, is_active FROM admin_users WHERE id = $1',
     [row.user_id],
   )
   if (!a || !a.is_active) return null
-  return { id: a.id, email: a.email, role: 'admin', name: a.name }
+  return { id: a.id, email: a.email, role: 'admin', name: a.name, isSuperAdmin: a.role === 'superadmin' }
 }
 
 /* ────────────────────────────────────────────────────────────────────────

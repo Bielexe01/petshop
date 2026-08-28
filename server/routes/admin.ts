@@ -37,7 +37,7 @@ adminRouter.get('/overview', async (_req, res) => {
 
 /* ── Usuários admin ───────────────────────────────────────────────────── */
 
-adminRouter.get('/users', async (_req, res) => {
+adminRouter.get('/users', requireSuperAdmin, async (_req, res) => {
   res.json({ users: await getAll<Record<string, unknown>>('SELECT id, name, email, role, is_active, created_at FROM admin_users ORDER BY created_at') })
 })
 

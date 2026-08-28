@@ -6,6 +6,8 @@ export interface SessionUser {
   email: string
   role: 'client' | 'admin'
   name: string
+  /** Apenas UI-gating (mostrar/esconder telas). Autorização real é no backend. */
+  isSuperAdmin?: boolean
 }
 
 interface SessionContextValue {

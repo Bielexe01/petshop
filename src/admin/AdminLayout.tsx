@@ -4,7 +4,9 @@ import { useSession } from '@/lib/session'
 import { VetCrossIcon } from '@/components/ui/icons'
 import { cn } from '@/lib/cn'
 
-const NAV = [
+type NavItem = { to: string; label: string; icon: (p: { className?: string }) => React.ReactNode; end?: boolean; superOnly?: boolean }
+
+const NAV: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: GridIcon, end: true },
   { to: '/admin/clientes', label: 'Clientes', icon: UsersIcon },
   { to: '/admin/pets', label: 'Pets', icon: PawAdminIcon },
@@ -15,6 +17,7 @@ const NAV = [
   { to: '/admin/documentos', label: 'Documentos', icon: DocIcon },
   { to: '/admin/fotos', label: 'Fotos do site', icon: ImageIcon },
   { to: '/admin/logs', label: 'Auditoria', icon: LogsIcon },
+  { to: '/admin/funcionarios', label: 'Funcionários', icon: StaffIcon, superOnly: true },
 ]
 
 /**
@@ -62,7 +65,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Menu administrativo">
-          {NAV.map((item) => (
+          {NAV.filter((item) => !item.superOnly || user?.isSuperAdmin).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -146,7 +149,7 @@ export default function AdminLayout() {
             <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Menu administrativo">
               <p className="px-3 pb-2 font-display text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Menu</p>
               <div className="flex flex-col gap-1">
-                {NAV.map((item) => (
+                {NAV.filter((item) => !item.superOnly || user?.isSuperAdmin).map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -226,6 +229,9 @@ function ImageIcon({ className }: { className?: string }) {
 }
 function LogsIcon({ className }: { className?: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+}
+function StaffIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /><path d="M15 11.5 17 13l3.5-3.5" /></svg>
 }
 function MenuIcon({ className }: { className?: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={className}><path d="M4 6h16M4 12h16M4 18h16" /></svg>

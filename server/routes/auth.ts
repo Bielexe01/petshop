@@ -78,10 +78,11 @@ authRouter.post('/login', async (req, res) => {
       return
     }
     await resetRateLimit(key)
-    const session = await createSession(admin.id, 'admin', admin.name, admin.email)
+    // A flag isSuperAdmin vai na sessão apenas para o front decidir visibilidade
+    // (UI-gating). A autorização real é do requireSuperAdmin no servidor, que
+    // relê o papel em admin_users a cada request.
+    const session = await createSession(admin.id, 'admin', admin.name, admin.email, admin.role === 'superadmin')
     setSessionCookie(res, session.token)
-    // session.user já carrega role normalizado ('admin'); o papel superadmin é
-    // resolvido no servidor (requireSuperAdmin) e nunca exposto ao cliente.
     res.json({ user: session.user })
     return
   }

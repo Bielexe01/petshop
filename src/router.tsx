@@ -36,6 +36,7 @@ const AdminVacinas = lazy(() => import('@/admin/Vacinas'))
 const AdminDocumentos = lazy(() => import('@/admin/Documentos'))
 const AdminFotos = lazy(() => import('@/admin/Fotos'))
 const AdminLogs = lazy(() => import('@/admin/Logs'))
+const AdminFuncionarios = lazy(() => import('@/admin/Funcionarios'))
 
 const SuspenseWrapper = ({ children }: { children: ReactNode }) => (
   <Suspense fallback={<FullPageLoader />}>{children}</Suspense>
@@ -304,6 +305,14 @@ export function AppRouter() {
             element={
               <SuspenseWrapper>
                 <AdminLogs />
+              </SuspenseWrapper>
+            }
+          />
+          <Route
+            path="funcionarios"
+            element={
+              <SuspenseWrapper>
+                <AdminFuncionarios />
               </SuspenseWrapper>
             }
           />
