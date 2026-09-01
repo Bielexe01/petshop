@@ -53,7 +53,7 @@ export function Header() {
           </span>
           <span className="hidden leading-tight sm:block">
             <span className={cn('block font-display text-[15px] font-black tracking-tight', scrolled ? 'text-dark' : 'text-white')}>
-              Dr.ª Cássia Carvalho
+              Sua CLinica
             </span>
             <span className={cn('block text-[10px] font-semibold uppercase tracking-[0.22em]', scrolled ? 'text-magenta' : 'text-white/80')}>
               Veterinária · 24h

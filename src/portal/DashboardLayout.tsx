@@ -59,7 +59,7 @@ export default function DashboardLayout() {
           </span>
           <div className="leading-tight">
             <p className="font-display text-[13px] font-black text-dark">Área do Cliente</p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-magenta">Dr.ª Cássia</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-magenta">Sua CLinica</p>
           </div>
         </div>
 
@@ -135,7 +135,7 @@ export default function DashboardLayout() {
                 </span>
                 <div className="leading-tight">
                   <p className="font-display text-[13px] font-black text-dark">Área do Cliente</p>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-magenta">Dr.ª Cássia</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-magenta">Sua CLinica</p>
                 </div>
               </div>
               <button

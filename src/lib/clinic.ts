@@ -1,7 +1,7 @@
 /** Dados globais da clínica — fonte única usada em toda a landing e portal. */
 export const CLINIC = {
-  name: 'Clínica Veterinária Dr.ª Cássia Carvalho',
-  shortName: 'Dr.ª Cássia Carvalho',
+  name: 'Sua CLinica',
+  shortName: 'Sua CLinica',
   city: 'Guariba — São Paulo',
   address: 'R. Bonfim, 1015 — Vila Garavello',
   cityLine: 'Guariba · SP',

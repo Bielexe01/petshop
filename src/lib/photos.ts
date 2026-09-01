@@ -32,14 +32,14 @@ export interface PhotoSpec {
 }
 
 export const PHOTO_MANIFEST: Record<PhotoKey, PhotoSpec> = {
-  fachada: { key: 'fachada', label: 'Fachada da clínica', alt: 'Fachada da Clínica Veterinária Dr.ª Cássia Carvalho com blocos coloridos', file: 'fachada' },
+  fachada: { key: 'fachada', label: 'Fachada da clínica', alt: 'Fachada da Sua CLinica com blocos coloridos', file: 'fachada' },
   'fachada-2': { key: 'fachada-2', label: 'Fachada — detalhe', alt: 'Detalhe colorido da fachada da clínica', file: 'fachada-2' },
   equipe: { key: 'equipe', label: 'Equipe da clínica', alt: 'Equipe da clínica com uniformes rosa', file: 'equipe' },
   'equipe-2': { key: 'equipe-2', label: 'Equipe — atendimento', alt: 'Equipe da clínica em atendimento', file: 'equipe-2' },
   atendimento: { key: 'atendimento', label: 'Atendimento', alt: 'Atendimento veterinário na clínica', file: 'atendimento' },
   animais: { key: 'animais', label: 'Nossos pacientes', alt: 'Animais sendo cuidados na clínica', file: 'animais' },
   ambiente: { key: 'ambiente', label: 'Ambiente da clínica', alt: 'Ambiente interno colorido e acolhedor da clínica', file: 'ambiente' },
-  doutora: { key: 'doutora', label: 'Dr.ª Cássia Carvalho', alt: 'Dr.ª Cássia Carvalho', file: 'doutora' },
+  doutora: { key: 'doutora', label: 'Sua CLinica', alt: 'Sua CLinica', file: 'doutora' },
   recepcao: { key: 'recepcao', label: 'Recepção', alt: 'Recepção da clínica', file: 'recepcao' },
   'pet-thor': { key: 'pet-thor', label: 'Thor', alt: 'Thor, Golden Retriever', file: 'pet-thor' },
   'pet-luna': { key: 'pet-luna', label: 'Luna', alt: 'Luna, gata SRD', file: 'pet-luna' },

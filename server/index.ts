@@ -92,7 +92,7 @@ app.use('/api/profile', requireAuth, profileRouter)
 
 /* ── Health check ─────────────────────────────────────────────────────── */
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, name: 'Clínica Veterinária Dr.ª Cássia Carvalho' })
+  res.json({ ok: true, name: 'Sua CLinica' })
 })
 
 /* ── Sessão atual (para o front guardar estado) ───────────────────────── */
@@ -156,7 +156,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 /* ── Listen (só fora da Vercel) ───────────────────────────────────────── */
 if (!IS_VERCEL) {
   const server = app.listen(PORT, () => {
-    console.log(`\n  🐾 Clínica Veterinária Dr.ª Cássia Carvalho`)
+    console.log(`\n  🐾 Sua CLinica`)
     console.log(`  ➜  http://localhost:${PORT}`)
     console.log(`  ➜  API em /api · sessão httpOnly · Postgres (Supabase)`)
   })

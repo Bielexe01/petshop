@@ -39,7 +39,7 @@ async function ensureAdmin() {
   const existing = await getOne<{ id: number }>('SELECT id FROM admin_users WHERE email = $1', ['admin@clinica.com'])
   if (existing) return existing.id
   const { lastInsertRowid } = await run('INSERT INTO admin_users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id', [
-    'Cássia Carvalho',
+    'Admin Sua CLinica',
     'admin@clinica.com',
     hashPassword('Admin@1234'),
     'superadmin',
@@ -76,7 +76,7 @@ async function runDemo() {
   const appt1 = (
     await run(
       `INSERT INTO appointments (pet_id, client_id, vet_name, type, scheduled_at, status, summary, diagnosis, notes, is_demo, created_by_admin)
-       VALUES ($1, $2, 'Dr.ª Cássia Carvalho', 'consulta', '2026-07-15 09:30:00', 'realizada',
+       VALUES ($1, $2, 'Sua CLinica', 'consulta', '2026-07-15 09:30:00', 'realizada',
                'Check-up anual completo. Exame físico, pesagem e avaliação de mobilidade.',
                'Paciente saudável, dentro do peso ideal.',
                'Manter rotina de exercícios.', true, true) RETURNING id`,
@@ -86,7 +86,7 @@ async function runDemo() {
 
   await run(
     `INSERT INTO appointments (pet_id, client_id, vet_name, type, scheduled_at, status, summary, diagnosis, notes, is_demo, created_by_admin)
-     VALUES ($1, $2, 'Dr.ª Cássia Carvalho', 'urgencia', '2026-08-02 14:10:00', 'realizada',
+     VALUES ($1, $2, 'Sua CLinica', 'urgencia', '2026-08-02 14:10:00', 'realizada',
              'Atendimento de urgência após episódio de vômito.',
              'Gastrite leve — reação alimentar.',
              'Prescrita dieta leve por 3 dias.', true, true)`,
@@ -95,24 +95,24 @@ async function runDemo() {
 
   await run(
     `INSERT INTO appointments (pet_id, client_id, vet_name, type, scheduled_at, status, is_demo, created_by_admin)
-     VALUES ($1, $2, 'Dr.ª Cássia Carvalho', 'retorno', $3, 'agendada', true, true)`,
+     VALUES ($1, $2, 'Sua CLinica', 'retorno', $3, 'agendada', true, true)`,
     [thor, clientId, `${today(12)} 10:00:00`],
   )
 
   /* Registros médicos */
   await run(
     `INSERT INTO medical_records (pet_id, appointment_id, vet_name, record_type, title, description, is_demo)
-     VALUES ($1, $2, 'Dr.ª Cássia Carvalho', 'consulta', 'Check-up anual', 'Exame físico completo. Físico geral normal.', true)`,
+     VALUES ($1, $2, 'Sua CLinica', 'consulta', 'Check-up anual', 'Exame físico completo. Físico geral normal.', true)`,
     [thor, appt1],
   )
   await run(
     `INSERT INTO medical_records (pet_id, vet_name, record_type, title, description, is_demo)
-     VALUES ($1, 'Dr.ª Cássia Carvalho', 'vacina', 'V10 (anual)', 'Aplicada dose de reforço da vacina V10.', true)`,
+     VALUES ($1, 'Sua CLinica', 'vacina', 'V10 (anual)', 'Aplicada dose de reforço da vacina V10.', true)`,
     [thor],
   )
   await run(
     `INSERT INTO medical_records (pet_id, vet_name, record_type, title, description, is_demo)
-     VALUES ($1, 'Dr.ª Cássia Carvalho', 'exame', 'Hemograma completo', 'Resultados dentro do padrão de referência.', true)`,
+     VALUES ($1, 'Sua CLinica', 'exame', 'Hemograma completo', 'Resultados dentro do padrão de referência.', true)`,
     [luna],
   )
 
@@ -120,7 +120,7 @@ async function runDemo() {
   const rx1 = (
     await run(
       `INSERT INTO prescriptions (pet_id, client_id, vet_name, issued_at, valid_until, instructions, is_demo, created_by_admin)
-       VALUES ($1, $2, 'Dr.ª Cássia Carvalho', '2026-07-15 10:00:00', '2026-09-15', 'Administrar conforme orientação. Em caso de dúvida, contatar a clínica.', true, true) RETURNING id`,
+       VALUES ($1, $2, 'Sua CLinica', '2026-07-15 10:00:00', '2026-09-15', 'Administrar conforme orientação. Em caso de dúvida, contatar a clínica.', true, true) RETURNING id`,
       [thor, clientId],
     )
   ).lastInsertRowid
@@ -138,29 +138,29 @@ async function runDemo() {
   /* Exames */
   await run(
     `INSERT INTO exams (pet_id, client_id, name, category, status, result_date, vet_name, notes, is_demo, created_by_admin)
-     VALUES ($1, $2, 'Hemograma completo', 'laboratorial', 'concluido', '2026-07-15', 'Dr.ª Cássia Carvalho', 'Sem alterações relevantes.', true, true)`,
+     VALUES ($1, $2, 'Hemograma completo', 'laboratorial', 'concluido', '2026-07-15', 'Sua CLinica', 'Sem alterações relevantes.', true, true)`,
     [thor, clientId],
   )
   await run(
     `INSERT INTO exams (pet_id, client_id, name, category, status, vet_name, is_demo, created_by_admin)
-     VALUES ($1, $2, 'Ultrassonografia abdominal', 'imagem', 'pendente', 'Dr.ª Cássia Carvalho', true, true)`,
+     VALUES ($1, $2, 'Ultrassonografia abdominal', 'imagem', 'pendente', 'Sua CLinica', true, true)`,
     [luna, clientId],
   )
 
   /* Vacinas */
   await run(
     `INSERT INTO vaccinations (pet_id, client_id, name, applied_at, next_dose_at, lot, clinic_name, vet_name, is_demo, created_by_admin)
-     VALUES ($1, $2, 'V10 (anual)', '2025-08-10', '2026-08-10', 'LOT-A100', 'Clínica Dr.ª Cássia Carvalho', 'Dr.ª Cássia Carvalho', true, true)`,
+     VALUES ($1, $2, 'V10 (anual)', '2025-08-10', '2026-08-10', 'LOT-A100', 'Sua CLinica', 'Sua CLinica', true, true)`,
     [thor, clientId],
   )
   await run(
     `INSERT INTO vaccinations (pet_id, client_id, name, applied_at, next_dose_at, lot, clinic_name, vet_name, is_demo, created_by_admin)
-     VALUES ($1, $2, 'Antirrábica', '2025-08-10', '2026-08-10', 'LOT-R45', 'Clínica Dr.ª Cássia Carvalho', 'Dr.ª Cássia Carvalho', true, true)`,
+     VALUES ($1, $2, 'Antirrábica', '2025-08-10', '2026-08-10', 'LOT-R45', 'Sua CLinica', 'Sua CLinica', true, true)`,
     [thor, clientId],
   )
   await run(
     `INSERT INTO vaccinations (pet_id, client_id, name, applied_at, next_dose_at, lot, clinic_name, vet_name, is_demo, created_by_admin)
-     VALUES ($1, $2, 'V4 (felina)', '2025-09-20', '2026-09-20', 'LOT-F77', 'Clínica Dr.ª Cássia Carvalho', 'Dr.ª Cássia Carvalho', true, true)`,
+     VALUES ($1, $2, 'V4 (felina)', '2025-09-20', '2026-09-20', 'LOT-F77', 'Sua CLinica', 'Sua CLinica', true, true)`,
     [luna, clientId],
   )
 

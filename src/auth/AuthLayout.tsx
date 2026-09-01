@@ -18,7 +18,7 @@ export default function AuthLayout({ children, admin = false }: { children: Reac
           </span>
           <span className="leading-tight">
             <span className="block font-display text-sm font-black text-white">Clínica Veterinária</span>
-            <span className="block font-display text-sm font-black text-magenta">Dr.ª Cássia Carvalho</span>
+            <span className="block font-display text-sm font-black text-magenta">Sua CLinica</span>
           </span>
         </Link>
 
@@ -53,7 +53,7 @@ export default function AuthLayout({ children, admin = false }: { children: Reac
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-magenta text-white">
                 <PawIcon className="h-5 w-5" />
               </span>
-              <span className="font-display text-sm font-black text-dark">Dr.ª Cássia Carvalho</span>
+              <span className="font-display text-sm font-black text-dark">Sua CLinica</span>
             </Link>
           </div>
           {children}

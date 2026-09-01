@@ -61,7 +61,7 @@ export default function AdminLayout() {
           </span>
           <div className="leading-tight">
             <p className="font-display text-[13px] font-black text-white">Painel Admin</p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-turquesa">Dr.ª Cássia</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-turquesa">Sua CLinica</p>
           </div>
         </div>
 
@@ -135,7 +135,7 @@ export default function AdminLayout() {
                 </span>
                 <div className="leading-tight">
                   <p className="font-display text-[13px] font-black text-white">Painel Admin</p>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-turquesa">Dr.ª Cássia</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-turquesa">Sua CLinica</p>
                 </div>
               </div>
               <button

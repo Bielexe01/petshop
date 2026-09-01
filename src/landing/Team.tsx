@@ -70,8 +70,8 @@ export function Team() {
             <div className="relative h-full min-h-[320px] overflow-hidden rounded-3xl lg:min-h-[520px]">
               <Photo photo="doutora" className="h-full w-full" imgClassName="object-cover" />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-dark/85 to-transparent p-6">
-                <p className="font-display text-xl font-black uppercase tracking-tight text-white">Dr.ª Cássia Carvalho</p>
-                <p className="text-sm font-semibold text-white/80">Fundadora · Clínica Geral e Cirurgia</p>
+                <p className="font-display text-xl font-black uppercase tracking-tight text-white">Sua CLinica</p>
+                <p className="text-sm font-semibold text-white/80">Atendimento completo e acolhedor</p>
               </div>
             </div>
           </div>

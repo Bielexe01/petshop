@@ -33,7 +33,7 @@ interface PetOption {
   owner_name: string | null
 }
 
-const EMPTY_FORM = { petId: '', name: '', appliedAt: '', nextDoseAt: '', lot: '', clinicName: 'Clínica Dr.ª Cássia Carvalho', vetName: '' }
+const EMPTY_FORM = { petId: '', name: '', appliedAt: '', nextDoseAt: '', lot: '', clinicName: 'Sua CLinica', vetName: '' }
 
 function doseStatus(next: string | null): { tone: 'green' | 'yellow' | 'red'; label: string } {
   if (!next) return { tone: 'green', label: 'Em dia' }

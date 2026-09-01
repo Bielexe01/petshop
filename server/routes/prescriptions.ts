@@ -35,7 +35,7 @@ function formatDate(value: string | null | undefined): string {
 function buildPrescriptionPdf(prescription: Record<string, unknown>, items: Record<string, unknown>[]): Buffer {
   const petName = String(prescription.pet_name ?? 'Pet')
   const clientName = String(prescription.client_name ?? 'Cliente')
-  const vetName = String(prescription.vet_name ?? 'Dr.ª Cássia Carvalho')
+  const vetName = String(prescription.vet_name ?? 'Sua CLinica')
 
   const blocks: PdfBlock[] = [
     { type: 'text', value: '<b>Paciente:</b>', size: 10.5, color: '#17202A', gap: 0 },

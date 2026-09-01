@@ -19,7 +19,7 @@ export function Footer() {
               </span>
               <div>
                 <p className="font-display text-base font-black leading-tight">Clínica Veterinária</p>
-                <p className="font-display text-base font-black leading-tight text-magenta">Dr.ª Cássia Carvalho</p>
+                <p className="font-display text-base font-black leading-tight text-magenta">Sua CLinica</p>
               </div>
             </div>
             <p className="mt-5 max-w-sm text-sm leading-relaxed text-white/60">
@@ -63,7 +63,7 @@ export function Footer() {
         </div>
 
         <div className="mt-14 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-7 text-xs text-white/40 sm:flex-row">
-          <p>© {new Date().getFullYear()} Clínica Veterinária Dr.ª Cássia Carvalho · Guariba-SP</p>
+          <p>© {new Date().getFullYear()} Sua CLinica · Guariba-SP</p>
           <p>Feito com <span className="text-magenta">♥</span> para quem cuida de quem ama.</p>
         </div>
       </div>

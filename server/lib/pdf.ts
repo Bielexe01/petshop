@@ -254,7 +254,7 @@ function buildStream(blocks: PdfBlock[], header: { title: string; subtitle?: str
   // Nome da clínica
   cmds.push('/F2 17 Tf')
   cmds.push(white)
-  cmds.push(`BT ${MARGIN} ${A4_H - 50} Td (${esc('Clínica Veterinária Dr.ª Cássia Carvalho')}) Tj ET`)
+  cmds.push(`BT ${MARGIN} ${A4_H - 50} Td (${esc('Sua CLinica')}) Tj ET`)
   cmds.push('/F1 9.5 Tf')
   cmds.push(`BT ${MARGIN} ${A4_H - 66} Td (${esc('Guariba-SP — R. Bonfim, 1015 — Vila Garavello')}) Tj ET`)
   cmds.push(`BT ${MARGIN} ${A4_H - 80} Td (${esc('Atendimento 24 horas — (16) 99781-7140')}) Tj ET`)
