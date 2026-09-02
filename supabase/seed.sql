@@ -1,11 +1,11 @@
--- =====================================================================
---  SEED — dados de demonstração da Clínica Veterinária Dr.ª Cássia Carvalho
---  PostgreSQL (Supabase). Execute DEPOIS de supabase/schema.sql
---  (SQL Editor do Supabase, ou psql).
---
---  Este script é idempotente: pode ser executado mais de uma vez sem
---  duplicar registros (usa WHERE NOT EXISTS + RETURNING).
---
+
+-- Buckets privados usados pelo backend para documentos e fotos de pets.
+INSERT INTO storage.buckets (id, name, public)
+VALUES
+  ('petphotos', 'petphotos', false),
+  ('docs', 'docs', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
+
 --  CREDENCIAIS DEMO (senhas com hash scrypt — o formato exato que o app
 --  valida em server/auth.ts):
 --    Cliente:  cliente@demo.com  /  Demo@1234
@@ -40,6 +40,21 @@ SELECT 'Cássia Carvalho',
        'scrypt$16384$8$1$104725a85148929b8668fc3f902f6af2$b9258a78bf1ad113761de16f3fe47b07ce0b3d9619e99b2f8b2df9591f3f62ce4f7c426273d8f7961f1592eef2ae5086846c58c81f11de3018c4af4c2ca06f55',
        'superadmin'
 WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email = 'admin@clinica.com');
+
+    -- Garante que as credenciais demo continuam utilizáveis após reexecuções.
+    -- Estas contas são públicas por definição e devem ser trocadas em produção.
+    UPDATE users
+    SET password_hash = 'scrypt$16384$8$1$4ca289576d83976eda952c20eb29813e$c100aba01749b1416fb23e0fdd54571821111ddf737d96bf72baf77522d8bd0a254c0c743f2339fa9b248cd3804a46f9ec32e6fcabf48a4360d92a58887579e4',
+      is_active = true,
+      updated_at = now()
+    WHERE email = 'cliente@demo.com';
+
+    UPDATE admin_users
+    SET password_hash = 'scrypt$16384$8$1$104725a85148929b8668fc3f902f6af2$b9258a78bf1ad113761de16f3fe47b07ce0b3d9619e99b2f8b2df9591f3f62ce4f7c426273d8f7961f1592eef2ae5086846c58c81f11de3018c4af4c2ca06f55',
+      role = 'superadmin',
+      is_active = true,
+      updated_at = now()
+    WHERE email = 'admin@clinica.com';
 
 -- ---------------------------------------------------------------------
 -- 2. PETS

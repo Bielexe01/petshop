@@ -92,7 +92,7 @@ app.use('/api/profile', requireAuth, profileRouter)
 
 /* ── Health check ─────────────────────────────────────────────────────── */
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, name: 'Sua CLinica' })
+  res.json({ ok: true, name: 'Clínica Veterinária Dr.ª Cássia Carvalho', build: 'supabase-rbac-2026-09-02' })
 })
 
 /* ── Sessão atual (para o front guardar estado) ───────────────────────── */
@@ -150,7 +150,13 @@ if (IS_PROD) {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[erro]', err)
   if (res.headersSent) return
-  res.status(500).json({ message: 'Erro interno do servidor.' })
+  const errorMessage = err instanceof Error ? err.message : String(err)
+  const code = errorMessage.includes('Faltando DATABASE_URL')
+    ? 'DATABASE_URL_AUSENTE'
+    : errorMessage.includes('getaddrinfo') || errorMessage.includes('timeout')
+      ? 'BANCO_INDISPONIVEL'
+      : 'ERRO_BANCO_OU_SERVIDOR'
+  res.status(500).json({ message: 'Erro interno do servidor.', code })
 })
 
 /* ── Listen (só fora da Vercel) ───────────────────────────────────────── */

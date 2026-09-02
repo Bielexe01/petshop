@@ -28,6 +28,17 @@ create table if not exists profiles (
   updated_at  timestamptz not null default now()
 );
 
+-- Papéis administrativos (RBAC por tela)
+create table if not exists admin_roles (
+  id          bigint generated always as identity primary key,
+  name        text not null unique,
+  description text,
+  screens     jsonb not null default '[]'::jsonb,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
 -- Administradores da clínica (login separado)
 create table if not exists admin_users (
   id            bigint generated always as identity primary key,
@@ -35,6 +46,7 @@ create table if not exists admin_users (
   email         citext not null unique,
   password_hash text not null,
   role          text not null default 'admin' check (role in ('admin', 'superadmin')),
+  role_id       bigint references admin_roles(id) on delete set null,
   is_active     boolean not null default true,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
@@ -241,3 +253,14 @@ create index if not exists idx_vaccinations_client on vaccinations(client_id);
 create index if not exists idx_vaccinations_pet on vaccinations(pet_id);
 create index if not exists idx_documents_client on documents(client_id);
 create index if not exists idx_notifications_user on notifications(user_id);
+
+-- Compatibilidade para bancos que foram criados com uma versão anterior.
+alter table admin_users add column if not exists role_id bigint references admin_roles(id) on delete set null;
+
+-- Papéis iniciais do painel. O superadmin não depende de papel para acessar
+-- todas as telas; estes papéis servem para administradores comuns.
+insert into admin_roles (name, description, screens) values
+  ('Recepcionista', 'Atendimento e agendamento: gerencia clientes, pets e consultas.', '["dashboard","clientes","pets","consultas"]'::jsonb),
+  ('Veterinário', 'Clínica: consultas, receitas, exames e vacinas.', '["dashboard","consultas","receitas","exames","vacinas"]'::jsonb),
+  ('Financeiro', 'Financeiro: receitas e documentos.', '["dashboard","receitas","documentos"]'::jsonb)
+on conflict (name) do nothing;
